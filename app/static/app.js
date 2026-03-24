@@ -6,8 +6,13 @@ const SUMMARY_CARD = document.querySelector("#summary-card");
 const OCCUPIED_SLOTS = document.querySelector("#occupied-slots");
 const FREE_SLOTS = document.querySelector("#free-slots");
 const SUMMARY_MESSAGE = document.querySelector("#summary-message");
+const APP_BASE_PATH = window.APP_CONFIG?.appBasePath || "";
 
 const REFRESH_MS = 15_000;
+
+function apiUrl(path) {
+  return `${APP_BASE_PATH}${path}`;
+}
 
 function minutesToLabel(totalMinutes) {
   const hours = Math.floor(totalMinutes / 60);
@@ -159,8 +164,8 @@ function escapeHtml(value) {
 
 async function refreshBoard() {
   const [status, history] = await Promise.all([
-    requestJson("/api/status"),
-    requestJson("/api/history"),
+    requestJson(apiUrl("/api/status")),
+    requestJson(apiUrl("/api/history")),
   ]);
 
   renderSummary(status);
@@ -178,7 +183,7 @@ CHECK_IN_FORM.addEventListener("submit", async (event) => {
   };
 
   try {
-    await requestJson("/api/check-in", {
+    await requestJson(apiUrl("/api/check-in"), {
       method: "POST",
       body: JSON.stringify(payload),
     });
@@ -200,8 +205,8 @@ document.addEventListener("click", async (event) => {
   const action = button.dataset.action;
   const endpoint =
     action === "force-release"
-      ? `/api/force-release/${sessionId}`
-      : "/api/check-out";
+      ? apiUrl(`/api/force-release/${sessionId}`)
+      : apiUrl("/api/check-out");
 
   try {
     button.disabled = true;

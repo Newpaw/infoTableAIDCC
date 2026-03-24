@@ -25,10 +25,18 @@ def _bool_env(name: str, default: bool) -> bool:
     return raw.strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _path_env(name: str, default: str = "") -> str:
+    raw = os.getenv(name, default).strip()
+    if not raw or raw == "/":
+        return ""
+    return "/" + raw.strip("/")
+
+
 @dataclass(frozen=True)
 class Settings:
     app_username: str
     app_password: str
+    app_base_path: str
     max_slots: int
     stale_after_minutes: int
     auto_release_stale: bool
@@ -42,6 +50,7 @@ def get_settings() -> Settings:
     return Settings(
         app_username=_require_env("APP_USERNAME"),
         app_password=_require_env("APP_PASSWORD"),
+        app_base_path=_path_env("APP_BASE_PATH"),
         max_slots=max(1, int(os.getenv("MAX_SLOTS", "5"))),
         stale_after_minutes=max(1, int(os.getenv("STALE_AFTER_MINUTES", "480"))),
         auto_release_stale=_bool_env("AUTO_RELEASE_STALE", False),

@@ -22,7 +22,7 @@ Internal FastAPI utility for coordinating access to a limited pool of shared Gen
 docker compose up --build
 ```
 
-3. Open `http://localhost:8000`.
+3. Open `http://localhost:8000/infotable/` when `APP_BASE_PATH=/infotable`, or `http://localhost:8000/` when the variable is empty.
 
 ## Run With Docker Only
 
@@ -49,7 +49,7 @@ docker run --rm \
   genesys-license-tracker
 ```
 
-Then open `http://localhost:8000`.
+Then open `http://localhost:8000/infotable/` when `APP_BASE_PATH=/infotable`, or `http://localhost:8000/` when the variable is empty.
 
 ## Local Development
 
@@ -60,10 +60,13 @@ pip install -e .
 uvicorn app.main:app --reload --env-file .env
 ```
 
+If the app is hosted behind a shared URL path, set `APP_BASE_PATH` to that prefix, for example `/infotable`.
+
 ## Environment Variables
 
 - `APP_USERNAME`
 - `APP_PASSWORD`
+- `APP_BASE_PATH` default empty string, example `/infotable`
 - `MAX_SLOTS` default `5`
 - `STALE_AFTER_MINUTES` default `480`
 - `AUTO_RELEASE_STALE` default `false`

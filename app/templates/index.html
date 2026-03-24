@@ -71,9 +71,10 @@
 
     <script>
       window.APP_CONFIG = {
+        appBasePath: {{ app_base_path|tojson }},
         maxSlots: {{ max_slots }},
         staleAfterMinutes: {{ stale_after_minutes }},
-        autoReleaseStale: {{ 'true' if auto_release_stale else 'false' }},
+        autoReleaseStale: {{ auto_release_stale|tojson }},
       };
     </script>
     <script src="{{ url_for('static', path='app.js') }}" defer></script>

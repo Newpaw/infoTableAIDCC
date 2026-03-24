@@ -17,6 +17,16 @@ from app.database import SessionStore, utc_now
 templates = Jinja2Templates(directory="app/templates")
 
 
+def route_path(base_path: str, path: str) -> str:
+    if not path.startswith("/"):
+        raise ValueError("Route path must start with '/'.")
+    if not base_path:
+        return path
+    if path == "/":
+        return f"{base_path}/"
+    return f"{base_path}{path}"
+
+
 class CheckInPayload(BaseModel):
     user_name: str = Field(min_length=2, max_length=60)
     note: str = Field(default="", max_length=180)
@@ -74,6 +84,7 @@ def create_app() -> FastAPI:
     settings = get_settings()
     store = SessionStore(settings)
     store.initialize()
+    base_path = settings.app_base_path
 
     app = FastAPI(
         title="Genesys Cloud License Tracker",
@@ -82,22 +93,23 @@ def create_app() -> FastAPI:
     app.state.settings = settings
     app.state.store = store
     app.add_middleware(BasicAuthMiddleware)
-    app.mount("/static", StaticFiles(directory="app/static"), name="static")
+    app.mount(route_path(base_path, "/static"), StaticFiles(directory="app/static"), name="static")
 
-    @app.get("/", response_class=HTMLResponse)
+    @app.get(route_path(base_path, "/"), response_class=HTMLResponse)
     async def index(request: Request) -> HTMLResponse:
         return templates.TemplateResponse(
             request=request,
             name="index.html",
             context={
                 "page_title": "Genesys Cloud License Tracker",
+                "app_base_path": base_path,
                 "max_slots": settings.max_slots,
                 "stale_after_minutes": settings.stale_after_minutes,
                 "auto_release_stale": settings.auto_release_stale,
             },
         )
 
-    @app.get("/api/status")
+    @app.get(route_path(base_path, "/api/status"))
     async def get_status(request: Request) -> dict:
         maybe_auto_release(request)
         settings, store = get_runtime(request)
@@ -117,7 +129,7 @@ def create_app() -> FastAPI:
             "sessions": sessions,
         }
 
-    @app.get("/api/history")
+    @app.get(route_path(base_path, "/api/history"))
     async def get_history(
         request: Request,
         limit: int = Query(default=settings.history_limit, ge=1, le=100),
@@ -128,7 +140,7 @@ def create_app() -> FastAPI:
             "items": store.list_recent_history(limit),
         }
 
-    @app.post("/api/check-in", status_code=status.HTTP_201_CREATED)
+    @app.post(route_path(base_path, "/api/check-in"), status_code=status.HTTP_201_CREATED)
     async def check_in(request: Request, payload: CheckInPayload) -> dict:
         maybe_auto_release(request)
         _, store = get_runtime(request)
@@ -145,7 +157,7 @@ def create_app() -> FastAPI:
             )
         return {"message": "Slot occupied.", "session": session}
 
-    @app.post("/api/check-out")
+    @app.post(route_path(base_path, "/api/check-out"))
     async def check_out(request: Request, payload: CheckOutPayload) -> dict:
         settings, store = get_runtime(request)
         released = store.release_session(
@@ -164,7 +176,7 @@ def create_app() -> FastAPI:
             "max_slots": settings.max_slots,
         }
 
-    @app.post("/api/force-release/{session_id}")
+    @app.post(route_path(base_path, "/api/force-release/{session_id}"))
     async def force_release(request: Request, session_id: int) -> dict:
         settings, store = get_runtime(request)
         released = store.release_session(session_id=session_id, reason="force")

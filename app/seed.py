@@ -22,6 +22,7 @@ def seed_demo(conn: sqlite3.Connection) -> None:
             "Stable outbound campaign already in production.",
             "Validate business impact and gradually increase daily volume.",
             None,
+            "demo:alpha",
         ),
         (
             "Outbound Campaign Beta",
@@ -34,6 +35,7 @@ def seed_demo(conn: sqlite3.Connection) -> None:
             "Campaign waiting for one business decision before go-live.",
             "Launch MVP and validate lead quality.",
             None,
+            "demo:beta",
         ),
         (
             "E2E Monitoring",
@@ -46,13 +48,14 @@ def seed_demo(conn: sqlite3.Connection) -> None:
             "Cross-cutting monitoring for the AIDCC delivery chain.",
             "Detect failures before business owners report them.",
             None,
+            "demo:e2e-monitoring",
         ),
     ]
     for row in demo_projects:
         cursor = conn.execute(
             """
-            INSERT INTO projects(name, slug, project_type, business_owner, aidcc_spoc, status, health, summary, target, launch_date, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO projects(name, slug, project_type, business_owner, aidcc_spoc, status, health, summary, target, launch_date, source_ref, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (*row, now, now),
         )

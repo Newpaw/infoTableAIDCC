@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="hero"><div><p class="eyebrow">Priority queue</p><h1>Needs attention</h1><p class="lead">Only the things that can delay delivery or already missed their date.</p></div></section>
+<section class="section"><h2>Blocking & overdue actions</h2><div class="attention-grid">
+{% for a in items %}<a class="attention-card {% if a['blocks_go_live'] %}critical{% endif %}" href="/projects/{{ a['project_slug'] }}"><div class="row between"><span class="chip {{ 'bad' if a['blocks_go_live'] else 'warn' }}">{{ 'GO-LIVE BLOCKER' if a['blocks_go_live'] else 'OVERDUE' }}</span><span class="muted">{{ a['due_date'] or 'No due date' }}</span></div><h3>{{ a['project_name'] }}</h3><strong>{{ a['title'] }}</strong><p>{{ a['next_action'] or a['detail'] or 'Next action missing.' }}</p><div class="meta">Owner: {{ a['owner'] or 'TBD' }}</div></a>{% else %}<div class="card empty">Nothing blocking delivery.</div>{% endfor %}
+</div></section>
+<section class="section"><h2>Open decisions</h2><div class="attention-grid">
+{% for d in decisions %}<a class="attention-card" href="/projects/{{ d['project_slug'] }}"><span class="chip warn">DECISION</span><h3>{{ d['project_name'] }}</h3><strong>{{ d['title'] }}</strong><p>{{ d['recommendation'] or d['context'] or 'Recommendation not defined.' }}</p><div class="meta">Owner: {{ d['owner'] or 'TBD' }} · Due: {{ d['due_date'] or 'TBD' }}</div></a>{% else %}<div class="card empty">No open decisions.</div>{% endfor %}
+</div></section>
+{% endblock %}

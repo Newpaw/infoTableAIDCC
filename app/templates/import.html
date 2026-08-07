@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="hero"><div><p class="eyebrow">Migration</p><h1>Import legacy Excel</h1><p class="lead">Upload the current AIDCC workbook. Data is written only into this instance's SQLite database.</p></div></section>
+<div class="card import-card">
+  <h2>AIDCC Board XLSX</h2>
+  <p>The importer understands the existing <strong>Status</strong> sheet and campaign sheets with columns such as task, detail, status, owner, date and next action.</p>
+  <form method="post" action="/import" enctype="multipart/form-data" class="upload-form">
+    <input type="file" name="file" accept=".xlsx" required>
+    <button class="button primary">Import workbook</button>
+  </form>
+  <div class="notice"><strong>Safe by design:</strong> the workbook is not committed to GitHub. It is processed in memory and stored in SQLite under the mounted Docker volume.</div>
+</div>
+{% endblock %}

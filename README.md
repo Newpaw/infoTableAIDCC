@@ -1,78 +1,89 @@
-# Genesys Cloud License Occupancy Tracker
+# AIDCC Control Center
 
-Internal FastAPI utility for coordinating access to a limited pool of shared Genesys Cloud licenses.
+Small operating cockpit for AIDCC projects and AI Voice outbound campaigns.
 
-## Features
+The MVP intentionally does **not** try to replace Jira, Confluence or analytics platforms. It answers four operational questions:
 
-- Shared Basic Authentication using environment variables
-- Live dashboard showing occupied and free slots
-- Check-in with employee name and optional note
-- Check-out and force-release actions
-- SQLite persistence for active sessions and history
-- Stale-session highlighting with optional automatic release
-- Docker and Docker Compose support
+1. What is running?
+2. What blocks launch or delivery?
+3. Who owns the next action?
+4. Which decision is still missing?
 
-## Quick Start
+## MVP features
 
-1. Create a `.env` file from `.env.example`.
-   Example: `cp .env.example .env`
-2. Start the app with Docker Compose:
+- Portfolio dashboard with health, blockers, overdue actions and upcoming launches
+- Project detail with Business Owner and AIDCC SPOC
+- Standard launch-readiness pipeline
+- Actions with owner, status, due date, next action and go-live blocker flag
+- Explicit decision log with AIDCC recommendation and final decision
+- `Needs attention` queue
+- Activity history
+- Weekly update generator (Markdown)
+- Import of the legacy AIDCC `.xlsx` workbook into SQLite
+- SQLite persistence
+- Optional HTTP Basic Auth
+- Docker image, no Node build and no external database
 
-```bash
-docker compose up --build
-```
+## Run with one Docker command
 
-3. Open `http://localhost:8000/infotable/` when `APP_BASE_PATH=/infotable`, or `http://localhost:8000/` when the variable is empty.
-
-## Run With Docker Only
-
-Build the image:
-
-```bash
-docker build -t genesys-license-tracker .
-```
-
-Create a persistent volume for SQLite data:
+The only thing that should be persisted is `/app/data`:
 
 ```bash
-docker volume create genesys-license-tracker-data
-```
-
-Run the container with your `.env` file:
-
-```bash
-docker run --rm \
-  --name genesys-license-tracker \
+docker run -d \
+  --name aidcc-control-center \
+  --restart unless-stopped \
   -p 8000:8000 \
-  --env-file .env \
-  -v genesys-license-tracker-data:/app/data \
-  genesys-license-tracker
+  -v aidcc-control-center-data:/app/data \
+  ghcr.io/newpaw/aidcc-control-center:latest
 ```
 
-Then open `http://localhost:8000/infotable/` when `APP_BASE_PATH=/infotable`, or `http://localhost:8000/` when the variable is empty.
+Open `http://localhost:8000`.
 
-## Local Development
+### Optional authentication
+
+No `.env` file is required. If the service is reachable outside a trusted network, set two variables:
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -e .
-uvicorn app.main:app --reload --env-file .env
+docker run -d \
+  --name aidcc-control-center \
+  --restart unless-stopped \
+  -p 8000:8000 \
+  -e APP_USERNAME=aidcc \
+  -e APP_PASSWORD='change-me' \
+  -v aidcc-control-center-data:/app/data \
+  ghcr.io/newpaw/aidcc-control-center:latest
 ```
 
-If the app is hosted behind a shared URL path, set `APP_BASE_PATH` to that prefix, for example `/infotable`.
+## Import the current Excel board
 
-## Environment Variables
+Use **Import Excel** in the top navigation and upload the current AIDCC workbook. The file is processed by the application and stored in SQLite; it is not copied to the repository or image.
 
-- `APP_USERNAME`
-- `APP_PASSWORD`
-- `APP_BASE_PATH` default empty string, example `/infotable`
-- `MAX_SLOTS` default `5`
-- `STALE_AFTER_MINUTES` default `480`
-- `AUTO_RELEASE_STALE` default `false`
-- `DATABASE_PATH` default `data/tracker.db`
-- `HISTORY_LIMIT` default `20`
+The importer understands:
 
-## Persistence
+- the `Status` readiness matrix
+- campaign sheets with columns such as `task`, `detail`, `status`, `owner`, `date`, `next action/detail`
+- Business Owner and AIDCC SPOC metadata where present
+- cross-cutting sheets as `Enabler` projects
 
-The SQLite database is stored under `/app/data/tracker.db` in the container and mounted through a Docker volume in `docker-compose.yml`.
+Re-importing replaces previously imported actions for the same sheet while preserving manually created actions.
+
+## Local build
+
+```bash
+docker build -t aidcc-control-center .
+docker run --rm -p 8000:8000 -v aidcc-control-center-data:/app/data aidcc-control-center
+```
+
+## Minimal configuration
+
+| Variable | Required | Default | Purpose |
+|---|---|---|---|
+| `APP_USERNAME` | No | empty | Enables Basic Auth when both auth variables are set |
+| `APP_PASSWORD` | No | empty | Enables Basic Auth when both auth variables are set |
+| `DATABASE_PATH` | No | `/app/data/aidcc.db` | Override SQLite location if needed |
+
+## Data safety
+
+Do not commit real AIDCC Excel files or SQLite databases. Both `*.xlsx` and `data/` are ignored by Git.
+
+The repository contains only fictional demo records. Real internal data should enter through the running application and stay in its persistent volume.

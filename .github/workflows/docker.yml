@@ -23,7 +23,7 @@ jobs:
       - uses: docker/metadata-action@v5
         id: meta
         with:
-          images: ghcr.io/${{ github.repository_owner }}/aidcc-control-center
+          images: ghcr.io/newpaw/aidcc-control-center
           tags: |
             type=raw,value=latest
             type=sha

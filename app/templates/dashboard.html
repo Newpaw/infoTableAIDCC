@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="hero">
+  <div>
+    <p class="eyebrow">AIDCC operating cockpit</p>
+    <h1>Portfolio overview</h1>
+    <p class="lead">What is running, what is blocked, and who has the next move.</p>
+  </div>
+  <details class="create-panel">
+    <summary class="button primary">+ New project</summary>
+    <form method="post" action="/projects" class="form-grid card">
+      <label>Name<input name="name" required placeholder="Campaign or enabler name"></label>
+      <label>Type<select name="project_type"><option>Campaign</option><option>Enabler</option></select></label>
+      <label>Business owner<input name="business_owner"></label>
+      <label>AIDCC SPOC<input name="aidcc_spoc"></label>
+      <label class="span-2">Summary<textarea name="summary" rows="2"></textarea></label>
+      <label class="span-2">Target<textarea name="target" rows="2"></textarea></label>
+      <label>Launch date<input type="date" name="launch_date"></label>
+      <div class="form-actions"><button class="button primary">Create project</button></div>
+    </form>
+  </details>
+</section>
+
+<div class="kpis">
+  <div class="kpi"><span>Active projects</span><strong>{{ active }}</strong></div>
+  <div class="kpi bad"><span>Blocked projects</span><strong>{{ blocked }}</strong></div>
+  <div class="kpi warn"><span>Overdue actions</span><strong>{{ overdue }}</strong></div>
+  <div class="kpi"><span>Launches ≤14 days</span><strong>{{ upcoming }}</strong></div>
+</div>
+
+{% if attention %}
+<section class="section">
+  <div class="section-head"><div><p class="eyebrow">Priority queue</p><h2>Needs attention</h2></div><a href="/attention">See all →</a></div>
+  <div class="attention-grid">
+    {% for a in attention %}
+      <a class="attention-card {% if a['blocks_go_live'] %}critical{% endif %}" href="/projects/{{ a['project_slug'] }}">
+        <div class="row between"><span class="chip {{ 'bad' if a['blocks_go_live'] else 'warn' }}">{{ 'GO-LIVE BLOCKER' if a['blocks_go_live'] else 'OVERDUE' }}</span><span class="muted">{{ a['due_date'] or 'No due date' }}</span></div>
+        <h3>{{ a['project_name'] }}</h3>
+        <strong>{{ a['title'] }}</strong>
+        <p>{{ a['next_action'] or a['detail'] or 'Next action not defined.' }}</p>
+        <div class="meta">Owner: {{ a['owner'] or 'TBD' }}</div>
+      </a>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+<section class="section">
+  <div class="section-head"><div><p class="eyebrow">Portfolio</p><h2>Projects</h2></div></div>
+  <div class="table-wrap card">
+    <table>
+      <thead><tr><th>Project</th><th>Type</th><th>Health</th><th>Business owner</th><th>AIDCC</th><th>Launch</th><th>Open</th><th>Blockers</th><th>Decisions</th></tr></thead>
+      <tbody>
+      {% for p in projects %}
+        <tr>
+          <td><a class="project-link" href="/projects/{{ p['slug'] }}">{{ p['name'] }}</a><div class="subline">{{ p['summary'] or '' }}</div></td>
+          <td>{{ p['project_type'] }}</td>
+          <td><span class="chip {{ health_class(p['health']) }}">{{ p['health'] }}</span></td>
+          <td>{{ p['business_owner'] or '—' }}</td>
+          <td>{{ p['aidcc_spoc'] or '—' }}</td>
+          <td>{{ p['launch_date'] or '—' }}</td>
+          <td>{{ p['open_actions'] }}</td>
+          <td><span class="count {{ 'bad-text' if p['blockers'] else '' }}">{{ p['blockers'] }}</span></td>
+          <td>{{ p['open_decisions'] }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

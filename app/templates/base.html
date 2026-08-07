@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>{% block title %}{{ app_title }}{% endblock %}</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/">AIDCC <span>Control Center</span></a>
+    <nav>
+      <a href="/">Portfolio</a>
+      <a href="/attention">Needs attention</a>
+      <a href="/weekly">Weekly update</a>
+      <a href="/import">Import Excel</a>
+    </nav>
+  </header>
+  <main class="page">
+    {% block content %}{% endblock %}
+  </main>
+  <script>
+    function copyText(id) {
+      const el = document.getElementById(id);
+      navigator.clipboard.writeText(el.value || el.innerText);
+      const btn = document.getElementById('copy-btn');
+      if (btn) { const old = btn.textContent; btn.textContent = 'Copied'; setTimeout(() => btn.textContent = old, 1200); }
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+{% block title %}{{ project['name'] }} · {{ app_title }}{% endblock %}
+{% block content %}
+<div class="project-head">
+  <div>
+    <a class="back" href="/">← Portfolio</a>
+    <div class="row gap"><span class="chip">{{ project['project_type'] }}</span><span class="chip {{ health_class(project['health']) }}">{{ project['health'] }}</span><span class="chip {{ status_class(project['status']) }}">{{ project['status'] }}</span></div>
+    <h1>{{ project['name'] }}</h1>
+    <p class="lead">{{ project['summary'] or 'No summary yet.' }}</p>
+  </div>
+  <details>
+    <summary class="button">Edit project</summary>
+    <form method="post" action="/projects/{{ project['id'] }}/update" class="form-grid card floating-form">
+      <label>Business owner<input name="business_owner" value="{{ project['business_owner'] or '' }}"></label>
+      <label>AIDCC SPOC<input name="aidcc_spoc" value="{{ project['aidcc_spoc'] or '' }}"></label>
+      <label>Status<select name="status">{% for x in ['Active','On hold','Completed'] %}<option {% if project['status']==x %}selected{% endif %}>{{ x }}</option>{% endfor %}</select></label>
+      <label>Health<select name="health">{% for x in ['Green','Amber','Red'] %}<option {% if project['health']==x %}selected{% endif %}>{{ x }}</option>{% endfor %}</select></label>
+      <label class="span-2">Summary<textarea name="summary">{{ project['summary'] or '' }}</textarea></label>
+      <label class="span-2">Target<textarea name="target">{{ project['target'] or '' }}</textarea></label>
+      <label>Launch date<input type="date" name="launch_date" value="{{ project['launch_date'] or '' }}"></label>
+      <div class="form-actions"><button class="button primary">Save</button></div>
+    </form>
+  </details>
+</div>
+
+<div class="facts card">
+  <div><span>Business owner</span><strong>{{ project['business_owner'] or 'TBD' }}</strong></div>
+  <div><span>AIDCC SPOC</span><strong>{{ project['aidcc_spoc'] or 'TBD' }}</strong></div>
+  <div><span>Launch</span><strong>{{ project['launch_date'] or 'TBD' }}</strong></div>
+  <div><span>Target</span><strong>{{ project['target'] or 'Not defined' }}</strong></div>
+</div>
+
+<section class="section">
+  <div class="section-head"><div><p class="eyebrow">Launch readiness</p><h2>Delivery pipeline</h2></div></div>
+  <div class="readiness">
+    {% for r in readiness %}
+      <form method="post" action="/projects/{{ project['id'] }}/readiness" class="stage {{ status_class(r['status']) }}">
+        <input type="hidden" name="stage" value="{{ r['stage'] }}">
+        <div class="stage-no">{{ loop.index }}</div>
+        <strong>{{ r['stage'] }}</strong>
+        <select name="status" onchange="this.form.submit()">
+          {% for x in ['Not started','To Do','In progress','Done','Issue'] %}<option {% if r['status']|lower == x|lower %}selected{% endif %}>{{ x }}</option>{% endfor %}
+        </select>
+      </form>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="section">
+  <div class="section-head">
+    <div><p class="eyebrow">Execution</p><h2>Actions</h2></div>
+    <details><summary class="button primary">+ Add action</summary>
+      <form method="post" action="/projects/{{ project['id'] }}/actions" class="form-grid card floating-form wide">
+        <label class="span-2">Action<input name="title" required placeholder="What must happen?"></label>
+        <label>Area<input name="area"></label>
+        <label>Owner<input name="owner"></label>
+        <label>Status<select name="status"><option>To Do</option><option>In progress</option><option>Done</option><option>Issue</option></select></label>
+        <label>Priority<select name="priority"><option>Normal</option><option>High</option><option>Critical</option></select></label>
+        <label>Due date<input type="date" name="due_date"></label>
+        <label class="check"><input type="checkbox" name="blocks_go_live" value="1"> Blocks go-live</label>
+        <label class="span-2">Detail<textarea name="detail"></textarea></label>
+        <label class="span-2">Next action<textarea name="next_action" placeholder="Who does what next?"></textarea></label>
+        <label class="span-2">Comment<textarea name="comment"></textarea></label>
+        <div class="form-actions"><button class="button primary">Add action</button></div>
+      </form>
+    </details>
+  </div>
+  <div class="table-wrap card">
+    <table>
+      <thead><tr><th>Status</th><th>Action</th><th>Owner</th><th>Due</th><th>Next action</th><th>Go-live</th></tr></thead>
+      <tbody>
+      {% for a in actions %}
+        <tr class="{% if status_done(a['status']) %}done-row{% endif %}">
+          <td><form method="post" action="/actions/{{ a['id'] }}/status"><select class="compact-select" name="status" onchange="this.form.submit()">{% for x in ['To Do','In progress','Done','Issue'] %}<option {% if a['status']|lower == x|lower %}selected{% endif %}>{{ x }}</option>{% endfor %}</select></form></td>
+          <td><strong>{{ a['title'] }}</strong>{% if a['area'] %}<div class="subline">{{ a['area'] }}</div>{% endif %}{% if a['detail'] %}<p class="cell-detail">{{ a['detail'] }}</p>{% endif %}</td>
+          <td>{{ a['owner'] or 'TBD' }}</td>
+          <td>{{ a['due_date'] or '—' }}</td>
+          <td>{{ a['next_action'] or '—' }}</td>
+          <td>{% if a['blocks_go_live'] %}<span class="chip bad">BLOCKER</span>{% else %}—{% endif %}</td>
+        </tr>
+      {% else %}<tr><td colspan="6" class="empty">No actions yet.</td></tr>{% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="section two-col">
+  <div>
+    <div class="section-head"><div><p class="eyebrow">Governance</p><h2>Decisions</h2></div>
+      <details><summary class="button">+ Decision</summary>
+        <form method="post" action="/projects/{{ project['id'] }}/decisions" class="form-grid card floating-form wide">
+          <label class="span-2">Decision needed<input name="title" required></label>
+          <label>Owner<input name="owner"></label><label>Due date<input type="date" name="due_date"></label>
+          <label class="span-2">Context<textarea name="context"></textarea></label>
+          <label class="span-2">AIDCC recommendation<textarea name="recommendation"></textarea></label>
+          <div class="form-actions"><button class="button primary">Create decision</button></div>
+        </form>
+      </details>
+    </div>
+    <div class="stack">
+      {% for d in decisions %}
+      <article class="card decision">
+        <div class="row between"><span class="chip {{ status_class(d['status']) }}">{{ d['status'] }}</span><span class="muted">{{ d['due_date'] or 'No due date' }}</span></div>
+        <h3>{{ d['title'] }}</h3>
+        {% if d['context'] %}<p>{{ d['context'] }}</p>{% endif %}
+        {% if d['recommendation'] %}<div class="recommend"><span>AIDCC recommendation</span>{{ d['recommendation'] }}</div>{% endif %}
+        <div class="meta">Decision owner: {{ d['owner'] or 'TBD' }}</div>
+        {% if d['status']|lower not in ['decided','done','closed','resolved'] %}
+        <form method="post" action="/decisions/{{ d['id'] }}/resolve" class="resolve"><input name="decision" required placeholder="Final decision"><button class="button small">Resolve</button></form>
+        {% elif d['decision'] %}<div class="resolved"><strong>Decision:</strong> {{ d['decision'] }}</div>{% endif %}
+      </article>
+      {% else %}<div class="card empty">No open decisions.</div>{% endfor %}
+    </div>
+  </div>
+  <div>
+    <div class="section-head"><div><p class="eyebrow">Audit trail</p><h2>Activity</h2></div></div>
+    <div class="timeline card">
+      {% for a in activity %}
+      <div class="timeline-item"><span></span><div><strong>{{ a['action'] }}</strong><p>{{ a['detail'] or '' }}</p><small>{{ a['created_at'] }}</small></div></div>
+      {% else %}<div class="empty">No activity yet.</div>{% endfor %}
+    </div>
+  </div>
+</section>
+{% endblock %}

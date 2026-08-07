@@ -1,8 +1,9 @@
 .git
-.venv
-__pycache__/
+.github
+__pycache__
 *.pyc
-.env
+*.pyo
+*.db
 data/
-
-docs/
+.env
+*.xlsx

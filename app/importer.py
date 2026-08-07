@@ -23,6 +23,16 @@ READINESS_STAGES = [
 
 SKIP_SHEETS = {"schedule", "BOARD launch to production"}
 
+SHEET_ALIASES = {
+    "BondingOptika": "Bonding a optika",
+    "Bonding wHW": "Bonding + HW",
+    "mojeO2": "MOA",
+    "Unity": "Unity",
+    "expSlevy": "Expirace slev",
+    "O2SPOLUcold_leads": "O2 Spolu",
+    "Alenka": "Alenka",
+}
+
 
 def _text(value: Any) -> str:
     if value is None:
@@ -169,6 +179,9 @@ def _upsert_project(
 def import_workbook(conn: sqlite3.Connection, raw: bytes) -> dict[str, int]:
     wb = load_workbook(io.BytesIO(raw), data_only=True, read_only=False)
     stats = {"projects": 0, "actions": 0, "readiness": 0}
+
+    # Demo records are useful only before the first real workbook import.
+    conn.execute("DELETE FROM projects WHERE source_ref LIKE 'demo:%'")
     readiness_by_name: dict[str, list[tuple[str, str]]] = {}
 
     if "Status" in wb.sheetnames:
@@ -190,11 +203,19 @@ def import_workbook(conn: sqlite3.Connection, raw: bytes) -> dict[str, int]:
             continue
         ws = wb[sheet_name]
         title, business_owner, spoc, summary = _read_meta(ws)
-        display_name = title or sheet_name
-        if len(display_name) > 90:
+        project_type = _project_type(sheet_name)
+        canonical_name = SHEET_ALIASES.get(sheet_name)
+        if canonical_name:
+            display_name = canonical_name
+        elif project_type == "Enabler":
             display_name = sheet_name
+        else:
+            display_name = title or sheet_name
+            if len(display_name) > 70 or _norm(display_name) in {"oblast", "task", "detail"}:
+                display_name = sheet_name
 
-        matched_stages = readiness_by_name.get(_norm(sheet_name)) or readiness_by_name.get(_norm(display_name)) or []
+        readiness_key = canonical_name or display_name
+        matched_stages = readiness_by_name.get(_norm(readiness_key)) or readiness_by_name.get(_norm(sheet_name)) or readiness_by_name.get(_norm(display_name)) or []
         health = _health_from_readiness([status for _, status in matched_stages]) if matched_stages else "Amber"
         project_id = _upsert_project(
             conn,
@@ -202,8 +223,8 @@ def import_workbook(conn: sqlite3.Connection, raw: bytes) -> dict[str, int]:
             f"xlsx:{sheet_name}",
             business_owner,
             spoc,
-            _project_type(sheet_name),
-            summary,
+            project_type,
+            summary if summary != display_name else "",
             health,
         )
         stats["projects"] += 1

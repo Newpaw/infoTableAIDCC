@@ -1,0 +1,5 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="hero"><div><p class="eyebrow">Reporting</p><h1>Weekly update generator</h1><p class="lead">Deterministic first draft generated directly from the current portfolio state.</p></div><button id="copy-btn" class="button primary" onclick="copyText('weekly-text')">Copy Markdown</button></section>
+<textarea id="weekly-text" class="weekly card" readonly>{{ markdown }}</textarea>
+{% endblock %}

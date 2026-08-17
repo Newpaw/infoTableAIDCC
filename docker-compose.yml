@@ -6,8 +6,9 @@ services:
     env_file:
       - .env
     volumes:
-      - tracker-data:/app/data
+      - genesysinfotable-data:/app/data
     restart: unless-stopped
 
 volumes:
-  tracker-data:
+  genesysinfotable-data:
+    name: genesysinfotable-data

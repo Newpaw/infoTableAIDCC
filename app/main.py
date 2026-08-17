@@ -5,7 +5,7 @@ from hmac import compare_digest
 from typing import Literal
 
 from fastapi import FastAPI, HTTPException, Query, Request, status
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field, model_validator
@@ -15,17 +15,8 @@ from app.config import Settings, get_settings
 from app.database import SessionStore, utc_now
 
 
+APP_VERSION = "2026.08.17.2"
 templates = Jinja2Templates(directory="app/templates")
-
-
-def route_path(base_path: str, path: str) -> str:
-    if not path.startswith("/"):
-        raise ValueError("Route path must start with '/'.")
-    if not base_path:
-        return path
-    if path == "/":
-        return f"{base_path}/"
-    return f"{base_path}{path}"
 
 
 class EnterPayload(BaseModel):
@@ -74,11 +65,24 @@ class BasicAuthMiddleware(BaseHTTPMiddleware):
         )
 
 
+class NoCacheMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        if (
+            request.url.path == "/"
+            or request.url.path.startswith("/static/")
+            or request.url.path.startswith("/api/")
+        ):
+            response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+            response.headers["Pragma"] = "no-cache"
+            response.headers["Expires"] = "0"
+        return response
+
+
 def create_app() -> FastAPI:
     settings = get_settings()
     store = SessionStore(settings)
     store.initialize()
-    base_path = settings.app_base_path
 
     app = FastAPI(
         title="AIDCC Genesys rozcestník",
@@ -86,30 +90,34 @@ def create_app() -> FastAPI:
     )
     app.state.settings = settings
     app.state.store = store
+    app.add_middleware(NoCacheMiddleware)
     app.add_middleware(BasicAuthMiddleware)
-    app.mount(
-        route_path(base_path, "/static"),
-        StaticFiles(directory="app/static"),
-        name="static",
-    )
+    app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
-    @app.get(route_path(base_path, "/"), response_class=HTMLResponse)
+    @app.get("/", response_class=HTMLResponse)
     async def index(request: Request) -> HTMLResponse:
         return templates.TemplateResponse(
             request=request,
             name="index.html",
             context={
                 "page_title": "AIDCC Genesys rozcestník",
-                "app_base_path": base_path,
+                "asset_version": APP_VERSION,
                 "stale_after_minutes": settings.stale_after_minutes,
             },
         )
 
+    legacy_base_path = settings.app_base_path
+    if legacy_base_path:
+        @app.get(legacy_base_path, include_in_schema=False)
+        @app.get(f"{legacy_base_path}/", include_in_schema=False)
+        async def legacy_redirect() -> RedirectResponse:
+            return RedirectResponse(url="/", status_code=status.HTTP_307_TEMPORARY_REDIRECT)
+
     @app.get("/health")
     async def health() -> dict:
-        return {"status": "ok"}
+        return {"status": "ok", "version": APP_VERSION}
 
-    @app.get(route_path(base_path, "/api/status"))
+    @app.get("/api/status")
     async def get_status(request: Request) -> dict:
         maybe_auto_release(request)
         settings, store = get_runtime(request)
@@ -149,7 +157,7 @@ def create_app() -> FastAPI:
             "environments": environments,
         }
 
-    @app.get(route_path(base_path, "/api/history"))
+    @app.get("/api/history")
     async def get_history(
         request: Request,
         limit: int = Query(default=settings.history_limit, ge=1, le=100),
@@ -158,22 +166,18 @@ def create_app() -> FastAPI:
         _, store = get_runtime(request)
         return {"items": store.list_recent_history(limit)}
 
-    @app.post(route_path(base_path, "/api/enter"))
+    @app.post("/api/enter")
     async def enter_environment(request: Request, payload: EnterPayload) -> dict:
         maybe_auto_release(request)
         settings, store = get_runtime(request)
         environment = settings.environment(payload.environment)
-        result, session = store.reserve_session(
-            payload.user_name,
-            payload.environment,
-        )
+        result, session = store.reserve_session(payload.user_name, payload.environment)
 
         if result == "global_full":
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Je obsazený celkový limit licencí. Nikdo další se teď nesmí přihlásit.",
             )
-
         if result == "full":
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
@@ -181,17 +185,13 @@ def create_app() -> FastAPI:
             )
 
         return {
-            "message": (
-                "Přihlášení už je evidované."
-                if result == "duplicate"
-                else "Licence byla rezervována."
-            ),
+            "message": "Přihlášení už je evidované." if result == "duplicate" else "Licence byla rezervována.",
             "already_active": result == "duplicate",
             "session": session,
             "redirect_url": environment.url,
         }
 
-    @app.post(route_path(base_path, "/api/check-out"))
+    @app.post("/api/check-out")
     async def check_out(request: Request, payload: CheckOutPayload) -> dict:
         _, store = get_runtime(request)
         released = store.release_session(payload.session_id, reason="manual")

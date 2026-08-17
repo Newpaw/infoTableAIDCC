@@ -5,51 +5,59 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="light" />
     <title>{{ page_title }}</title>
-    <link rel="stylesheet" href="{{ url_for('static', path='styles.css') }}" />
+    <link rel="stylesheet" href="/static/styles.css?v={{ asset_version }}" />
   </head>
   <body>
     <main class="shell">
-      <header class="topbar">
-        <div>
-          <p class="eyebrow">AIDCC · Genesys Cloud</p>
-          <h1>Kam se chceš přihlásit?</h1>
-          <p class="lead">
-            Zadej jméno a pokračuj přes jeden z boxů. Kliknutím se automaticky zapíše obsazená licence a otevře se správné Genesys prostředí.
-          </p>
+      <header class="app-header">
+        <div class="brand-block">
+          <div class="brand-mark" aria-hidden="true">AI</div>
+          <div>
+            <p class="eyebrow">AIDCC · GENESYS CLOUD</p>
+            <h1>Genesys Cloud rozcestník</h1>
+            <p class="lead">Nejdřív zadej jméno. Potom vyber prostředí. Licence se zapíše ještě před otevřením Genesysu.</p>
+          </div>
         </div>
-        <div class="top-status">
-          <div class="live-indicator"><span></span> živý přehled</div>
-          <div class="global-capacity" id="global-capacity">Celkem: načítám…</div>
+        <div class="license-summary" id="global-capacity" data-state="loading">
+          <span class="summary-label">Sdílené licence</span>
+          <strong>Načítám…</strong>
         </div>
       </header>
 
-      <section class="identity-card" aria-labelledby="name-label">
-        <label id="name-label" for="user-name">Tvoje jméno</label>
-        <input
-          id="user-name"
-          type="text"
-          maxlength="60"
-          autocomplete="name"
-          placeholder="Např. Jan Novopacký"
-          autofocus
-        />
-        <p class="hint">Jméno si prohlížeč zapamatuje pro příště.</p>
-      </section>
-
-      <section class="environment-grid" id="environment-grid" aria-live="polite">
-        <article class="environment-card loading-card">
-          <p>Načítám aktuální obsazenost…</p>
-        </article>
-      </section>
-
-      <p class="global-status" id="global-status" role="status" aria-live="polite"></p>
-
-      <section class="rules-card">
-        <div>
-          <h2>Jednoduché pravidlo</h2>
-          <p>Do Genesysu vždy vstupuj přes tento rozcestník. Po skončení se sem vrať a dej <strong>Odhlásit</strong>.</p>
+      <section class="step-card identity-card">
+        <div class="step-number">1</div>
+        <div class="step-content">
+          <label for="user-name">Kdo se přihlašuje?</label>
+          <div class="name-row">
+            <input id="user-name" type="text" maxlength="60" autocomplete="name" placeholder="Jméno a příjmení" autofocus />
+            <span class="remember-note">Jméno si tento prohlížeč zapamatuje.</span>
+          </div>
         </div>
-        <p class="rules-note">Staré záznamy se samy nemažou — dokud je někdo ručně neukončí, zůstávají obsazené.</p>
+      </section>
+
+      <section class="environment-section" aria-labelledby="environment-title">
+        <div class="section-heading">
+          <div class="step-number">2</div>
+          <div>
+            <h2 id="environment-title">Kam se chceš přihlásit?</h2>
+            <p>Produkce a test jsou oddělená prostředí. Cíl je vždy vidět ještě před kliknutím.</p>
+          </div>
+        </div>
+
+        <div class="environment-grid" id="environment-grid" aria-live="polite">
+          <article class="environment-card loading-card"><div class="skeleton skeleton-title"></div><div class="skeleton skeleton-line"></div><div class="skeleton skeleton-button"></div></article>
+          <article class="environment-card loading-card"><div class="skeleton skeleton-title"></div><div class="skeleton skeleton-line"></div><div class="skeleton skeleton-button"></div></article>
+        </div>
+      </section>
+
+      <div class="message-bar" id="global-status" role="status" aria-live="polite"></div>
+
+      <section class="howto-card">
+        <div class="howto-icon" aria-hidden="true">i</div>
+        <div>
+          <strong>Po skončení práce se sem vrať a u svého jména klikni na Odhlásit.</strong>
+          <p>Přihlášení se samo nemaže. Přehled proto nikdy sám neoznačí licenci za volnou, pokud ji někdo zapomněl uvolnit.</p>
+        </div>
       </section>
 
       <details class="history-card">
@@ -58,12 +66,7 @@
       </details>
     </main>
 
-    <script>
-      window.APP_CONFIG = {
-        appBasePath: {{ app_base_path|tojson }},
-        staleAfterMinutes: {{ stale_after_minutes }},
-      };
-    </script>
-    <script src="{{ url_for('static', path='app.js') }}" defer></script>
+    <script>window.APP_CONFIG = { staleAfterMinutes: {{ stale_after_minutes }} };</script>
+    <script src="/static/app.js?v={{ asset_version }}" defer></script>
   </body>
 </html>

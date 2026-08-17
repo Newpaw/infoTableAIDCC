@@ -1,7 +1,8 @@
 FROM python:3.13-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    DATABASE_PATH=/app/data/tracker.db
 
 WORKDIR /app
 
@@ -10,6 +11,8 @@ COPY app /app/app
 
 RUN pip install --no-cache-dir . \
     && mkdir -p /app/data
+
+VOLUME ["/app/data"]
 
 EXPOSE 8000
 

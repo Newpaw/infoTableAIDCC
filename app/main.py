@@ -15,7 +15,7 @@ from app.config import Settings, get_settings
 from app.database import SessionStore, utc_now
 
 
-APP_VERSION = "2026.08.17.2"
+APP_VERSION = "2026.08.17.3"
 templates = Jinja2Templates(directory="app/templates")
 
 
@@ -42,11 +42,7 @@ class BasicAuthMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
         if not settings.auth_enabled or self._is_authorized(request, settings):
             return await call_next(request)
-        return JSONResponse(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            headers={"WWW-Authenticate": "Basic"},
-            content={"detail": "Authentication required."},
-        )
+        return JSONResponse(status_code=status.HTTP_401_UNAUTHORIZED, headers={"WWW-Authenticate": "Basic"}, content={"detail": "Authentication required."})
 
     @staticmethod
     def _is_authorized(request: Request, settings: Settings) -> bool:
@@ -60,19 +56,13 @@ class BasicAuthMiddleware(BaseHTTPMiddleware):
         username, separator, password = decoded.partition(":")
         if not separator:
             return False
-        return compare_digest(username, settings.app_username) and compare_digest(
-            password, settings.app_password
-        )
+        return compare_digest(username, settings.app_username) and compare_digest(password, settings.app_password)
 
 
 class NoCacheMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         response = await call_next(request)
-        if (
-            request.url.path == "/"
-            or request.url.path.startswith("/static/")
-            or request.url.path.startswith("/api/")
-        ):
+        if request.url.path == "/" or request.url.path.startswith("/static/") or request.url.path.startswith("/api/"):
             response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
             response.headers["Pragma"] = "no-cache"
             response.headers["Expires"] = "0"
@@ -83,11 +73,7 @@ def create_app() -> FastAPI:
     settings = get_settings()
     store = SessionStore(settings)
     store.initialize()
-
-    app = FastAPI(
-        title="AIDCC Genesys rozcestník",
-        summary="Shared license launcher for Genesys Cloud production and test environments.",
-    )
+    app = FastAPI(title="AIDCC Genesys rozcestník", summary="Shared license launcher and usage analytics for Genesys Cloud.")
     app.state.settings = settings
     app.state.store = store
     app.add_middleware(NoCacheMiddleware)
@@ -96,15 +82,10 @@ def create_app() -> FastAPI:
 
     @app.get("/", response_class=HTMLResponse)
     async def index(request: Request) -> HTMLResponse:
-        return templates.TemplateResponse(
-            request=request,
-            name="index.html",
-            context={
-                "page_title": "AIDCC Genesys rozcestník",
-                "asset_version": APP_VERSION,
-                "stale_after_minutes": settings.stale_after_minutes,
-            },
-        )
+        return templates.TemplateResponse(request=request, name="index.html", context={
+            "page_title": "AIDCC Genesys rozcestník", "asset_version": APP_VERSION,
+            "alert_after_minutes": settings.alert_after_minutes, "critical_after_minutes": settings.critical_after_minutes,
+        })
 
     legacy_base_path = settings.app_base_path
     if legacy_base_path:
@@ -122,49 +103,40 @@ def create_app() -> FastAPI:
         maybe_auto_release(request)
         settings, store = get_runtime(request)
         environments = []
-
         for environment in settings.environments:
             sessions = store.list_active_sessions(environment.key)
             occupied = len(sessions)
             free_slots = max(0, environment.max_slots - occupied)
-            environments.append(
-                {
-                    "key": environment.key,
-                    "label": environment.label,
-                    "url": environment.url,
-                    "max_slots": environment.max_slots,
-                    "occupied_slots": occupied,
-                    "free_slots": free_slots,
-                    "is_full": occupied >= environment.max_slots,
-                    "status_level": occupancy_level(occupied, environment.max_slots),
-                    "sessions": sessions,
-                }
-            )
-
+            environments.append({
+                "key": environment.key, "label": environment.label, "url": environment.url, "max_slots": environment.max_slots,
+                "occupied_slots": occupied, "free_slots": free_slots, "is_full": occupied >= environment.max_slots,
+                "status_level": occupancy_level(occupied, environment.max_slots), "sessions": sessions,
+            })
         all_sessions = store.list_active_sessions()
         global_occupied = len(all_sessions)
         global_limit = settings.global_max_slots
         global_free = None if global_limit is None else max(0, global_limit - global_occupied)
-
+        alerts = [session for session in all_sessions if session["age_minutes"] >= settings.alert_after_minutes]
+        critical_alerts = [session for session in alerts if session["age_minutes"] >= settings.critical_after_minutes]
         return {
-            "generated_at": utc_now().replace(microsecond=0).isoformat(),
-            "global_max_slots": global_limit,
-            "global_occupied_slots": global_occupied,
-            "global_free_slots": global_free,
+            "generated_at": utc_now().replace(microsecond=0).isoformat(), "global_max_slots": global_limit,
+            "global_occupied_slots": global_occupied, "global_free_slots": global_free,
             "global_is_full": global_limit is not None and global_occupied >= global_limit,
-            "stale_after_minutes": settings.stale_after_minutes,
-            "auto_release_stale": settings.auto_release_stale,
-            "environments": environments,
+            "alert_after_minutes": settings.alert_after_minutes, "critical_after_minutes": settings.critical_after_minutes,
+            "alert_count": len(alerts), "critical_alert_count": len(critical_alerts), "alerts": alerts, "environments": environments,
         }
 
     @app.get("/api/history")
-    async def get_history(
-        request: Request,
-        limit: int = Query(default=settings.history_limit, ge=1, le=100),
-    ) -> dict:
+    async def get_history(request: Request, limit: int = Query(default=settings.history_limit, ge=1, le=100)) -> dict:
         maybe_auto_release(request)
         _, store = get_runtime(request)
         return {"items": store.list_recent_history(limit)}
+
+    @app.get("/api/analytics")
+    async def get_analytics(request: Request, days: int = Query(default=30, ge=0, le=365)) -> dict:
+        maybe_auto_release(request)
+        _, store = get_runtime(request)
+        return store.analytics(days=days)
 
     @app.post("/api/enter")
     async def enter_environment(request: Request, payload: EnterPayload) -> dict:
@@ -172,34 +144,18 @@ def create_app() -> FastAPI:
         settings, store = get_runtime(request)
         environment = settings.environment(payload.environment)
         result, session = store.reserve_session(payload.user_name, payload.environment)
-
         if result == "global_full":
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Je obsazený celkový limit licencí. Nikdo další se teď nesmí přihlásit.",
-            )
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Je obsazený celkový limit licencí. Nikdo další se teď nesmí přihlásit.")
         if result == "full":
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=f"{environment.label} je plná. Nikdo další se teď nesmí přihlásit.",
-            )
-
-        return {
-            "message": "Přihlášení už je evidované." if result == "duplicate" else "Licence byla rezervována.",
-            "already_active": result == "duplicate",
-            "session": session,
-            "redirect_url": environment.url,
-        }
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"{environment.label} je plná. Nikdo další se teď nesmí přihlásit.")
+        return {"message": "Přihlášení už je evidované." if result == "duplicate" else "Licence byla rezervována.", "already_active": result == "duplicate", "session": session, "redirect_url": environment.url}
 
     @app.post("/api/check-out")
     async def check_out(request: Request, payload: CheckOutPayload) -> dict:
         _, store = get_runtime(request)
         released = store.release_session(payload.session_id, reason="manual")
         if released is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Aktivní přihlášení už nebylo nalezeno.",
-            )
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Aktivní přihlášení už nebylo nalezeno.")
         return {"message": "Přihlášení bylo ukončeno.", "released_session": released}
 
     return app

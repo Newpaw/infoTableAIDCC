@@ -1,128 +1,36 @@
-const ENVIRONMENT_GRID = document.querySelector("#environment-grid");
-const GLOBAL_STATUS = document.querySelector("#global-status");
-const HISTORY_LIST = document.querySelector("#history-list");
-const USER_NAME = document.querySelector("#user-name");
-const GLOBAL_CAPACITY = document.querySelector("#global-capacity");
-const REFRESH_MS = 10_000;
-const NAME_STORAGE_KEY = "aidcc-genesys-name";
-let currentStatus = null;
-
-function normalizedName() { return USER_NAME.value.trim().replace(/\s+/g, " "); }
-function minutesToLabel(totalMinutes) {
-  if (totalMinutes < 60) return `${totalMinutes} min`;
-  const hours = Math.floor(totalMinutes / 60);
-  const minutes = totalMinutes % 60;
-  if (hours < 24) return minutes ? `${hours} h ${minutes} min` : `${hours} h`;
-  const days = Math.floor(hours / 24);
-  const remainingHours = hours % 24;
-  return remainingHours ? `${days} d ${remainingHours} h` : `${days} d`;
-}
-function absoluteTime(isoString) {
-  return new Intl.DateTimeFormat("cs-CZ", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }).format(new Date(isoString));
-}
-function escapeHtml(value) {
-  return String(value).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#39;");
-}
-async function requestJson(url, options = {}) {
-  const response = await fetch(url, { cache: "no-store", headers: { "Content-Type": "application/json", ...(options.headers || {}) }, ...options });
-  if (!response.ok) {
-    let detail = "Požadavek se nepodařilo dokončit.";
-    try { const payload = await response.json(); detail = payload.detail || detail; } catch { detail = response.statusText || detail; }
-    throw new Error(detail);
-  }
-  return response.json();
-}
-function environmentMeta(environment) {
-  return environment.key === "prod"
-    ? { tag: "PRODUKCE", description: "Ostré produkční prostředí", location: "Germany · .de" }
-    : { tag: "TEST", description: "Testovací a vývojové prostředí", location: "Ireland · .ie" };
-}
-function environmentCaption(environment) {
-  if (environment.is_full) return "Plná kapacita";
-  if (environment.free_slots === 1) return "Poslední volná licence";
-  if (environment.free_slots === environment.max_slots) return "Všechny licence jsou volné";
-  return `${environment.free_slots} volné licence`;
-}
-function userAlreadyActive(environment) {
-  const name = normalizedName().toLocaleLowerCase("cs-CZ");
-  return Boolean(name) && environment.sessions.some((session) => session.user_name.toLocaleLowerCase("cs-CZ") === name);
-}
-function renderLicenseMeter(environment) {
-  return Array.from({ length: environment.max_slots }, (_, index) => `<span class="license-segment ${index < environment.occupied_slots ? "used" : "free"}" aria-hidden="true"></span>`).join("");
-}
-function renderSessions(environment) {
-  if (!environment.sessions.length) return `<div class="empty-environment"><span class="empty-dot"></span>Nikdo tu teď není přihlášen.</div>`;
-  return environment.sessions.map((session) => `
-    <div class="session-row ${session.stale ? "is-stale" : ""}">
-      <div class="person-avatar">${escapeHtml(session.user_name.charAt(0).toUpperCase())}</div>
-      <div class="session-copy"><strong>${escapeHtml(session.user_name)}</strong><span>Přihlášen ${minutesToLabel(session.age_minutes)} · od ${absoluteTime(session.checked_in_at)}</span></div>
-      ${session.stale ? '<span class="stale-badge">dlouho aktivní</span>' : ""}
-      <button class="logout-button" type="button" data-session-id="${session.id}">Odhlásit</button>
-    </div>`).join("");
-}
-function renderEnvironment(environment) {
-  const meta = environmentMeta(environment);
-  const allowExistingUser = userAlreadyActive(environment);
-  const globalBlocked = currentStatus?.global_is_full && !allowExistingUser;
-  const blocked = (environment.is_full || globalBlocked) && !allowExistingUser;
-  let buttonText = `Vstoupit do ${meta.tag}`;
-  if (allowExistingUser) buttonText = `Pokračovat do ${meta.tag}`;
-  else if (globalBlocked) buttonText = "Celkový limit licencí je plný";
-  else if (environment.is_full) buttonText = `${meta.tag} je plný`;
-  return `
-    <article class="environment-card env-${environment.key}" data-state="${environment.status_level}">
-      <div class="environment-top">
-        <div><span class="environment-tag">${meta.tag}</span><h3>${escapeHtml(environment.label)}</h3><p class="environment-description">${meta.description}</p></div>
-        <div class="capacity-pill ${environment.status_level}"><strong>${environment.occupied_slots}</strong><span>/ ${environment.max_slots} obsazeno</span></div>
-      </div>
-      <div class="target-box"><span class="target-label">Cíl přihlášení</span><strong>${escapeHtml(environment.url)}</strong><span>${meta.location}</span></div>
-      <div class="capacity-row"><div class="license-meter" aria-label="${environment.occupied_slots} z ${environment.max_slots} licencí obsazeno">${renderLicenseMeter(environment)}</div><span class="capacity-caption">${environmentCaption(environment)}</span></div>
-      <button class="enter-button" type="button" data-enter-environment="${environment.key}" ${blocked ? "disabled" : ""}><span>${buttonText}</span><span class="button-arrow" aria-hidden="true">→</span></button>
-      <div class="active-list"><div class="active-list-title"><span>Aktuálně přihlášeni</span><span>${environment.occupied_slots}</span></div>${renderSessions(environment)}</div>
-    </article>`;
-}
-function renderBoard(status) {
-  currentStatus = status;
-  if (status.global_max_slots) {
-    const free = Math.max(0, status.global_max_slots - status.global_occupied_slots);
-    GLOBAL_CAPACITY.innerHTML = `<span class="summary-label">Sdílené licence celkem</span><div class="summary-value"><strong>${status.global_occupied_slots} / ${status.global_max_slots}</strong><span>${status.global_is_full ? "PLNO" : `${free} volné`}</span></div>`;
-    GLOBAL_CAPACITY.dataset.state = status.global_is_full ? "full" : "available";
-  } else {
-    GLOBAL_CAPACITY.innerHTML = `<span class="summary-label">Aktivní přihlášení</span><div class="summary-value"><strong>${status.global_occupied_slots}</strong><span>bez společného limitu</span></div>`;
-    GLOBAL_CAPACITY.dataset.state = "available";
-  }
-  ENVIRONMENT_GRID.innerHTML = status.environments.map(renderEnvironment).join("");
-}
-function renderHistory(history) {
-  if (!history.items.length) { HISTORY_LIST.innerHTML = `<div class="history-empty">Zatím bez historie.</div>`; return; }
-  HISTORY_LIST.innerHTML = history.items.map((item) => `<div class="history-row"><span class="history-env env-${item.environment}">${item.environment === "prod" ? "PROD" : "TEST"}</span><strong>${escapeHtml(item.user_name)}</strong><span>${item.released_at ? "odhlášen" : "aktivní"}</span><span>${minutesToLabel(item.duration_minutes)}</span></div>`).join("");
-}
-function showMessage(message, kind = "info") { GLOBAL_STATUS.textContent = message; GLOBAL_STATUS.dataset.kind = message ? kind : ""; }
-async function refreshBoard() {
-  const [status, history] = await Promise.all([requestJson("/api/status"), requestJson("/api/history?limit=20")]);
-  renderBoard(status); renderHistory(history);
-}
-async function enterEnvironment(environmentKey, button) {
-  const userName = normalizedName();
-  if (userName.length < 2) { showMessage("Nejdřív zadej své jméno.", "error"); USER_NAME.focus(); return; }
-  localStorage.setItem(NAME_STORAGE_KEY, userName); showMessage("Rezervuji licenci a připravuji přesměrování…", "info"); button.disabled = true;
-  try {
-    const result = await requestJson("/api/enter", { method: "POST", body: JSON.stringify({ user_name: userName, environment: environmentKey }) });
-    showMessage(`${result.message} Otevírám Genesys…`, "success"); window.location.assign(result.redirect_url);
-  } catch (error) { showMessage(error.message, "error"); button.disabled = false; await refreshBoard(); }
-}
-async function logoutSession(sessionId, button) {
-  button.disabled = true;
-  try { await requestJson("/api/check-out", { method: "POST", body: JSON.stringify({ session_id: sessionId }) }); showMessage("Přihlášení bylo ukončeno a licence je znovu volná.", "success"); await refreshBoard(); }
-  catch (error) { showMessage(error.message, "error"); } finally { button.disabled = false; }
-}
-document.addEventListener("click", (event) => {
-  const enterButton = event.target.closest("button[data-enter-environment]");
-  if (enterButton) { enterEnvironment(enterButton.dataset.enterEnvironment, enterButton); return; }
-  const logoutButton = event.target.closest("button[data-session-id]");
-  if (logoutButton) logoutSession(Number(logoutButton.dataset.sessionId), logoutButton);
-});
-USER_NAME.addEventListener("input", () => { showMessage(""); if (currentStatus) renderBoard(currentStatus); });
-const savedName = localStorage.getItem(NAME_STORAGE_KEY); if (savedName) USER_NAME.value = savedName;
-refreshBoard().catch((error) => showMessage(`Nepodařilo se načíst stav licencí: ${error.message}`, "error"));
-window.setInterval(() => refreshBoard().catch((error) => showMessage(`Nepodařilo se obnovit stav licencí: ${error.message}`, "error")), REFRESH_MS);
+const ENVIRONMENT_GRID=document.querySelector('#environment-grid'),GLOBAL_STATUS=document.querySelector('#global-status'),USER_NAME=document.querySelector('#user-name'),GLOBAL_CAPACITY=document.querySelector('#global-capacity'),ALERT_BANNER=document.querySelector('#alert-banner'),TAB_ALERT_COUNT=document.querySelector('#tab-alert-count'),STATS_LOADING=document.querySelector('#stats-loading'),STATS_CONTENT=document.querySelector('#stats-content'),ANALYTICS_PERIOD=document.querySelector('#analytics-period'),LOG_SEARCH=document.querySelector('#log-search'),LOG_ENVIRONMENT=document.querySelector('#log-environment');
+const REFRESH_MS=10000,NAME_STORAGE_KEY='aidcc-genesys-name';let currentStatus=null,analyticsData=null,analyticsLoadedPeriod=null;
+function normalizedName(){return USER_NAME.value.trim().replace(/\s+/g,' ')}
+function minutesToLabel(v){v=Math.max(0,Number(v)||0);if(v<60)return`${v} min`;const h=Math.floor(v/60),m=v%60;if(h<24)return m?`${h} h ${m} min`:`${h} h`;const d=Math.floor(h/24),r=h%24;return r?`${d} d ${r} h`:`${d} d`}
+function minutesToHours(v){const h=(Number(v)||0)/60;return`${new Intl.NumberFormat('cs-CZ',{maximumFractionDigits:h>=10?0:1}).format(h)} h`}
+function absoluteTime(v,year=false){if(!v)return'—';return new Intl.DateTimeFormat('cs-CZ',{day:'2-digit',month:'2-digit',...(year?{year:'numeric'}:{}),hour:'2-digit',minute:'2-digit'}).format(new Date(v))}
+function dateLabel(v){return new Intl.DateTimeFormat('cs-CZ',{day:'2-digit',month:'2-digit'}).format(new Date(`${v}T12:00:00`))}
+function escapeHtml(v){return String(v).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#39;')}
+async function requestJson(url,options={}){const response=await fetch(url,{cache:'no-store',headers:{'Content-Type':'application/json',...(options.headers||{})},...options});if(!response.ok){let detail='Požadavek se nepodařilo dokončit.';try{const p=await response.json();detail=p.detail||detail}catch{detail=response.statusText||detail}throw new Error(detail)}return response.json()}
+function environmentMeta(e){return e.key==='prod'?{tag:'PRODUKCE',description:'Ostré produkční prostředí',location:'Germany · .de'}:{tag:'TEST',description:'Testovací a vývojové prostředí',location:'Ireland · .ie'}}
+function environmentCaption(e){if(e.is_full)return'Plná kapacita';if(e.free_slots===1)return'Poslední volná licence';if(e.free_slots===e.max_slots)return'Všechny licence jsou volné';return`${e.free_slots} volné licence`}
+function userAlreadyActive(e){const n=normalizedName().toLocaleLowerCase('cs-CZ');return Boolean(n)&&e.sessions.some(s=>s.user_name.toLocaleLowerCase('cs-CZ')===n)}
+function renderLicenseMeter(e){return Array.from({length:e.max_slots},(_,i)=>`<span class="license-segment ${i<e.occupied_slots?'used':'free'}"></span>`).join('')}
+function sessionAlertBadge(s){if(s.alert_level==='critical')return'<span class="session-alert critical">PŘES 2 H</span>';if(s.alert_level==='warning')return'<span class="session-alert warning">PŘES 1 H</span>';return''}
+function renderSessions(e){if(!e.sessions.length)return'<div class="empty-environment"><span class="empty-dot"></span>Nikdo tu teď není přihlášen.</div>';return e.sessions.map(s=>`<div class="session-row alert-${s.alert_level}"><div class="person-avatar">${escapeHtml(s.user_name.charAt(0).toUpperCase())}</div><div class="session-copy"><strong>${escapeHtml(s.user_name)}</strong><span>Přihlášen ${minutesToLabel(s.age_minutes)} · od ${absoluteTime(s.checked_in_at)}</span></div>${sessionAlertBadge(s)}<button class="logout-button" type="button" data-session-id="${s.id}">Odhlásit</button></div>`).join('')}
+function renderEnvironment(e){const m=environmentMeta(e),existing=userAlreadyActive(e),globalBlocked=currentStatus?.global_is_full&&!existing,blocked=(e.is_full||globalBlocked)&&!existing;let text=`Vstoupit do ${m.tag}`;if(existing)text=`Pokračovat do ${m.tag}`;else if(globalBlocked)text='Celkový limit licencí je plný';else if(e.is_full)text=`${m.tag} je plný`;return`<article class="environment-card env-${e.key}" data-state="${e.status_level}"><div class="environment-top"><div><span class="environment-tag">${m.tag}</span><h3>${escapeHtml(e.label)}</h3><p class="environment-description">${m.description}</p></div><div class="capacity-pill ${e.status_level}"><strong>${e.occupied_slots}</strong><span>/ ${e.max_slots} obsazeno</span></div></div><div class="target-box"><span class="target-label">Cíl přihlášení</span><strong>${escapeHtml(e.url)}</strong><span>${m.location}</span></div><div class="capacity-row"><div class="license-meter">${renderLicenseMeter(e)}</div><span class="capacity-caption">${environmentCaption(e)}</span></div><button class="enter-button" type="button" data-enter-environment="${e.key}" ${blocked?'disabled':''}><span>${text}</span><span class="button-arrow">→</span></button><div class="active-list"><div class="active-list-title"><span>Aktuálně přihlášeni</span><span>${e.occupied_slots}</span></div>${renderSessions(e)}</div></article>`}
+function renderAlerts(s){const count=s.alert_count||0;TAB_ALERT_COUNT.hidden=count===0;TAB_ALERT_COUNT.textContent=String(count);if(!count){ALERT_BANNER.hidden=true;ALERT_BANNER.innerHTML='';return}const critical=s.critical_alert_count||0,people=s.alerts.slice(0,4).map(x=>`${escapeHtml(x.user_name)} (${x.environment==='prod'?'PROD':'TEST'}, ${minutesToLabel(x.age_minutes)})`).join(' · ');ALERT_BANNER.hidden=false;ALERT_BANNER.dataset.level=critical?'critical':'warning';ALERT_BANNER.innerHTML=`<div class="alert-icon">!</div><div><strong>${count===1?'1 licence je aktivní déle než hodinu':`${count} licence jsou aktivní déle než hodinu`}</strong><p>${people}${count>4?` · +${count-4} další`:''}</p></div><button type="button" data-view-target="stats">Zobrazit analýzu</button>`}
+function renderBoard(s){currentStatus=s;if(s.global_max_slots){const free=Math.max(0,s.global_max_slots-s.global_occupied_slots);GLOBAL_CAPACITY.innerHTML=`<span class="summary-label">Sdílené licence celkem</span><div class="summary-value"><strong>${s.global_occupied_slots} / ${s.global_max_slots}</strong><span>${s.global_is_full?'PLNO':`${free} volné`}</span></div>`;GLOBAL_CAPACITY.dataset.state=s.global_is_full?'full':'available'}else{GLOBAL_CAPACITY.innerHTML=`<span class="summary-label">Aktivní přihlášení</span><div class="summary-value"><strong>${s.global_occupied_slots}</strong><span>bez společného limitu</span></div>`;GLOBAL_CAPACITY.dataset.state='available'}renderAlerts(s);ENVIRONMENT_GRID.innerHTML=s.environments.map(renderEnvironment).join('')}
+function showMessage(m,k='info'){GLOBAL_STATUS.textContent=m;GLOBAL_STATUS.dataset.kind=m?k:''}
+async function refreshBoard(){renderBoard(await requestJson('/api/status'))}
+async function enterEnvironment(key,button){const user=normalizedName();if(user.length<2){showMessage('Nejdřív zadej své jméno.','error');USER_NAME.focus();return}localStorage.setItem(NAME_STORAGE_KEY,user);showMessage('Rezervuji licenci a připravuji přesměrování…','info');button.disabled=true;try{const r=await requestJson('/api/enter',{method:'POST',body:JSON.stringify({user_name:user,environment:key})});showMessage(`${r.message} Otevírám Genesys…`,'success');window.location.assign(r.redirect_url)}catch(err){showMessage(err.message,'error');button.disabled=false;await refreshBoard()}}
+async function logoutSession(id,button){button.disabled=true;try{await requestJson('/api/check-out',{method:'POST',body:JSON.stringify({session_id:id})});showMessage('Přihlášení bylo ukončeno a licence je znovu volná.','success');analyticsLoadedPeriod=null;await refreshBoard()}catch(err){showMessage(err.message,'error')}finally{button.disabled=false}}
+function setView(v){document.querySelectorAll('.app-view').forEach(el=>{const a=el.id===`${v}-view`;el.hidden=!a;el.classList.toggle('active',a)});document.querySelectorAll('.view-tab').forEach(b=>b.classList.toggle('active',b.dataset.viewTarget===v));window.location.hash=v==='stats'?'stats':'';if(v==='stats')loadAnalytics()}
+function renderKpis(d){const s=d.summary,k=[['Přihlášení',new Intl.NumberFormat('cs-CZ').format(s.total_sessions),'zahájených session'],['Celkový čas',minutesToHours(s.total_minutes),'součet obsazených licencí'],['Průměrná session',minutesToLabel(s.average_minutes),`medián ${minutesToLabel(s.median_minutes)}`],['Maximum současně',String(s.peak_concurrent),'paralelních session'],['Dlouhá přihlášení',String(s.long_sessions),`nad ${minutesToLabel(d.thresholds.alert_minutes)}`]];document.querySelector('#kpi-grid').innerHTML=k.map(x=>`<article class="kpi-card"><span>${x[0]}</span><strong>${x[1]}</strong><small>${x[2]}</small></article>`).join('')}
+function renderEnvironmentAnalytics(d){document.querySelector('#environment-analytics').innerHTML=['prod','test'].map(key=>{const x=d.by_environment[key],label=key==='prod'?'PRODUKCE':'TEST';return`<div class="env-stat env-${key}"><div class="env-stat-top"><span>${label}</span><strong>${x.sessions} vstupů</strong></div><div class="env-stat-number">${minutesToHours(x.total_minutes)}</div><div class="env-stat-meta">průměr ${minutesToLabel(x.average_minutes)} · medián ${minutesToLabel(x.median_minutes)} · ${x.long_sessions} dlouhých</div></div>`}).join('')}
+function renderHourChart(d){const max=Math.max(1,...d.hourly_checkins.map(x=>x.sessions));document.querySelector('#hour-chart').innerHTML=d.hourly_checkins.map(x=>`<div class="hour-column" title="${x.hour}:00 · ${x.sessions} přihlášení"><div class="hour-bar-wrap"><div class="hour-bar" style="height:${Math.max(x.sessions?8:2,(x.sessions/max)*100)}%"></div></div><span>${String(x.hour).padStart(2,'0')}</span></div>`).join('')}
+function renderDailyChart(d){const all=d.daily_usage,max=Math.max(1,...all.map(x=>x.prod_minutes+x.test_minutes)),items=all.length>60?all.slice(-60):all;document.querySelector('#daily-chart').innerHTML=items.map(x=>{const total=x.prod_minutes+x.test_minutes,w=total/max*100,p=total?x.prod_minutes/total*100:0,t=100-p;return`<div class="daily-row"><span class="daily-date">${dateLabel(x.date)}</span><div class="daily-track" title="PROD ${minutesToLabel(x.prod_minutes)} · TEST ${minutesToLabel(x.test_minutes)}"><div class="daily-total" style="width:${w}%"><span class="daily-prod" style="width:${p}%"></span><span class="daily-test" style="width:${t}%"></span></div></div><span class="daily-value">${total?minutesToHours(total):'—'}</span></div>`}).join('')}
+function renderTopUsers(d){const rows=d.top_users.slice(0,12);document.querySelector('#top-users-table').innerHTML=`<thead><tr><th>Uživatel</th><th>Session</th><th>Celkem</th><th>Průměr</th><th>Nejdelší</th></tr></thead><tbody>${rows.length?rows.map(x=>`<tr><td><strong>${escapeHtml(x.user_name)}</strong><small>PROD ${x.prod_sessions} · TEST ${x.test_sessions}</small></td><td>${x.sessions}</td><td>${minutesToHours(x.total_minutes)}</td><td>${minutesToLabel(x.average_minutes)}</td><td>${minutesToLabel(x.longest_minutes)}</td></tr>`).join(''):'<tr><td colspan="5" class="empty-cell">Zatím bez dat.</td></tr>'}</tbody>`}
+function renderLongSessions(d){const target=document.querySelector('#long-sessions'),rows=d.long_sessions.slice(0,10);if(!rows.length){target.innerHTML=`<div class="empty-analysis">Žádná session nepřekročila ${minutesToLabel(d.thresholds.alert_minutes)}.</div>`;return}target.innerHTML=rows.map(x=>`<div class="long-session ${x.alert_level}"><div><strong>${escapeHtml(x.user_name)}</strong><span>${x.environment==='prod'?'PROD':'TEST'} · ${absoluteTime(x.checked_in_at,true)}</span></div><div class="long-duration">${minutesToLabel(x.duration_minutes)}</div><span class="status-dot ${x.released_at?'closed':'active'}">${x.released_at?'ukončeno':'stále aktivní'}</span></div>`).join('')}
+function filteredLog(){if(!analyticsData)return[];const q=LOG_SEARCH.value.trim().toLocaleLowerCase('cs-CZ'),env=LOG_ENVIRONMENT.value;return analyticsData.session_log.filter(x=>(!q||x.user_name.toLocaleLowerCase('cs-CZ').includes(q))&&(env==='all'||x.environment===env))}
+function renderSessionLog(){const rows=filteredLog();document.querySelector('#session-log-table').innerHTML=`<thead><tr><th>Uživatel</th><th>Prostředí</th><th>Přihlášení</th><th>Odhlášení</th><th>Délka</th><th>Stav</th></tr></thead><tbody>${rows.length?rows.map(x=>`<tr><td><strong>${escapeHtml(x.user_name)}</strong></td><td><span class="history-env env-${x.environment}">${x.environment==='prod'?'PROD':'TEST'}</span></td><td>${absoluteTime(x.checked_in_at,true)}</td><td>${x.released_at?absoluteTime(x.released_at,true):'—'}</td><td><strong class="${x.alert_level!=='normal'?`duration-${x.alert_level}`:''}">${minutesToLabel(x.duration_minutes)}</strong></td><td><span class="status-dot ${x.released_at?'closed':'active'}">${x.released_at?'ukončeno':'aktivní'}</span></td></tr>`).join(''):'<tr><td colspan="6" class="empty-cell">Žádné odpovídající záznamy.</td></tr>'}</tbody>`}
+function renderAnalytics(d){analyticsData=d;renderKpis(d);renderEnvironmentAnalytics(d);renderHourChart(d);renderDailyChart(d);renderTopUsers(d);renderLongSessions(d);renderSessionLog();STATS_LOADING.hidden=true;STATS_CONTENT.hidden=false}
+async function loadAnalytics(force=false){const days=Number(ANALYTICS_PERIOD.value);if(!force&&analyticsLoadedPeriod===days&&analyticsData)return;STATS_LOADING.hidden=false;STATS_CONTENT.hidden=true;STATS_LOADING.textContent='Načítám statistiky…';try{const d=await requestJson(`/api/analytics?days=${days}`);analyticsLoadedPeriod=days;renderAnalytics(d)}catch(err){STATS_LOADING.textContent=`Statistiky se nepodařilo načíst: ${err.message}`}}
+document.addEventListener('click',e=>{const view=e.target.closest('[data-view-target]');if(view){setView(view.dataset.viewTarget);return}const enter=e.target.closest('button[data-enter-environment]');if(enter){enterEnvironment(enter.dataset.enterEnvironment,enter);return}const logout=e.target.closest('button[data-session-id]');if(logout)logoutSession(Number(logout.dataset.sessionId),logout)});
+USER_NAME.addEventListener('input',()=>{showMessage('');if(currentStatus)renderBoard(currentStatus)});ANALYTICS_PERIOD.addEventListener('change',()=>loadAnalytics(true));LOG_SEARCH.addEventListener('input',renderSessionLog);LOG_ENVIRONMENT.addEventListener('change',renderSessionLog);
+const savedName=localStorage.getItem(NAME_STORAGE_KEY);if(savedName)USER_NAME.value=savedName;refreshBoard().catch(err=>showMessage(`Nepodařilo se načíst stav licencí: ${err.message}`,'error'));if(window.location.hash==='#stats')setView('stats');window.setInterval(()=>{refreshBoard().catch(err=>showMessage(`Nepodařilo se obnovit stav licencí: ${err.message}`,'error'));if(!document.querySelector('#stats-view').hidden)loadAnalytics(true)},REFRESH_MS);

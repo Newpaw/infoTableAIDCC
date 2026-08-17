@@ -15,7 +15,7 @@
           <div>
             <p class="eyebrow">AIDCC · GENESYS CLOUD</p>
             <h1>Genesys Cloud rozcestník</h1>
-            <p class="lead">Nejdřív zadej jméno. Potom vyber prostředí. Licence se zapíše ještě před otevřením Genesysu.</p>
+            <p class="lead">Hlídání sdílených licencí, rychlý vstup do správného prostředí a přehled jejich reálného využití.</p>
           </div>
         </div>
         <div class="license-summary" id="global-capacity" data-state="loading">
@@ -24,49 +24,66 @@
         </div>
       </header>
 
-      <section class="step-card identity-card">
-        <div class="step-number">1</div>
-        <div class="step-content">
-          <label for="user-name">Kdo se přihlašuje?</label>
-          <div class="name-row">
-            <input id="user-name" type="text" maxlength="60" autocomplete="name" placeholder="Jméno a příjmení" autofocus />
-            <span class="remember-note">Jméno si tento prohlížeč zapamatuje.</span>
+      <nav class="view-tabs" aria-label="Sekce aplikace">
+        <button class="view-tab active" type="button" data-view-target="launcher">Rozcestník</button>
+        <button class="view-tab" type="button" data-view-target="stats">Statistiky <span class="tab-alert-count" id="tab-alert-count" hidden>0</span></button>
+      </nav>
+
+      <section id="launcher-view" class="app-view active">
+        <div class="alert-banner" id="alert-banner" hidden></div>
+        <section class="step-card identity-card">
+          <div class="step-number">1</div>
+          <div class="step-content">
+            <label for="user-name">Kdo se přihlašuje?</label>
+            <div class="name-row">
+              <input id="user-name" type="text" maxlength="60" autocomplete="name" placeholder="Jméno a příjmení" autofocus />
+              <span class="remember-note">Jméno si tento prohlížeč zapamatuje.</span>
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
 
-      <section class="environment-section" aria-labelledby="environment-title">
-        <div class="section-heading">
-          <div class="step-number">2</div>
-          <div>
-            <h2 id="environment-title">Kam se chceš přihlásit?</h2>
-            <p>Produkce a test jsou oddělená prostředí. Cíl je vždy vidět ještě před kliknutím.</p>
+        <section class="environment-section" aria-labelledby="environment-title">
+          <div class="section-heading">
+            <div class="step-number">2</div>
+            <div><h2 id="environment-title">Kam se chceš přihlásit?</h2><p>Cílová URL i aktuální obsazenost jsou vidět ještě před kliknutím.</p></div>
           </div>
-        </div>
-
-        <div class="environment-grid" id="environment-grid" aria-live="polite">
-          <article class="environment-card loading-card"><div class="skeleton skeleton-title"></div><div class="skeleton skeleton-line"></div><div class="skeleton skeleton-button"></div></article>
-          <article class="environment-card loading-card"><div class="skeleton skeleton-title"></div><div class="skeleton skeleton-line"></div><div class="skeleton skeleton-button"></div></article>
-        </div>
+          <div class="environment-grid" id="environment-grid" aria-live="polite">
+            <article class="environment-card loading-card"><div class="skeleton skeleton-title"></div><div class="skeleton skeleton-line"></div><div class="skeleton skeleton-button"></div></article>
+            <article class="environment-card loading-card"><div class="skeleton skeleton-title"></div><div class="skeleton skeleton-line"></div><div class="skeleton skeleton-button"></div></article>
+          </div>
+        </section>
+        <div class="message-bar" id="global-status" role="status" aria-live="polite"></div>
+        <section class="howto-card">
+          <div class="howto-icon" aria-hidden="true">i</div>
+          <div><strong>Po skončení práce se sem vrať a u svého jména klikni na Odhlásit.</strong><p>Přihlášení se samo nemaže. Po {{ alert_after_minutes }} minutách se zobrazí upozornění a po {{ critical_after_minutes }} minutách kritický alert.</p></div>
+        </section>
       </section>
 
-      <div class="message-bar" id="global-status" role="status" aria-live="polite"></div>
-
-      <section class="howto-card">
-        <div class="howto-icon" aria-hidden="true">i</div>
-        <div>
-          <strong>Po skončení práce se sem vrať a u svého jména klikni na Odhlásit.</strong>
-          <p>Přihlášení se samo nemaže. Přehled proto nikdy sám neoznačí licenci za volnou, pokud ji někdo zapomněl uvolnit.</p>
+      <section id="stats-view" class="app-view" hidden>
+        <div class="stats-toolbar">
+          <div><p class="eyebrow">ANALYTIKA VYUŽITÍ</p><h2>Jak se licence skutečně používají</h2><p>Historie vstupů, délky session, nejčastější uživatelé a dlouhá přihlášení.</p></div>
+          <label class="period-control"><span>Období</span><select id="analytics-period"><option value="7">7 dní</option><option value="30" selected>30 dní</option><option value="90">90 dní</option><option value="365">1 rok</option><option value="0">Celá historie</option></select></label>
+        </div>
+        <div class="stats-loading" id="stats-loading">Načítám statistiky…</div>
+        <div id="stats-content" hidden>
+          <section class="kpi-grid" id="kpi-grid"></section>
+          <section class="analytics-grid two-column">
+            <article class="analytics-card"><div class="card-heading"><div><h3>Produkce vs. Test</h3><p>Počet vstupů a spotřebovaný čas.</p></div></div><div id="environment-analytics"></div></article>
+            <article class="analytics-card"><div class="card-heading"><div><h3>Kdy se lidé přihlašují</h3><p>Počet zahájených session podle hodiny dne.</p></div></div><div class="hour-chart" id="hour-chart"></div></article>
+          </section>
+          <section class="analytics-card"><div class="card-heading"><div><h3>Využití v čase</h3><p>Součet minut aktivních session podle dne a prostředí.</p></div><div class="chart-legend"><span class="legend-prod"></span> PROD <span class="legend-test"></span> TEST</div></div><div class="daily-chart" id="daily-chart"></div></section>
+          <section class="analytics-grid two-column">
+            <article class="analytics-card"><div class="card-heading"><div><h3>Největší uživatelé</h3><p>Kdo licence používá nejčastěji a nejdéle.</p></div></div><div class="table-scroll"><table class="data-table" id="top-users-table"></table></div></article>
+            <article class="analytics-card warning-card"><div class="card-heading"><div><h3>Dlouhá přihlášení</h3><p>Session delší než {{ alert_after_minutes }} minut.</p></div></div><div id="long-sessions"></div></article>
+          </section>
+          <section class="analytics-card">
+            <div class="card-heading log-heading"><div><h3>Kompletní historie přihlášení</h3><p>Kdo, kam, kdy a na jak dlouho.</p></div><div class="log-filters"><input id="log-search" type="search" placeholder="Hledat jméno…" /><select id="log-environment"><option value="all">PROD + TEST</option><option value="prod">Jen PROD</option><option value="test">Jen TEST</option></select></div></div>
+            <div class="table-scroll"><table class="data-table session-log-table" id="session-log-table"></table></div>
+          </section>
         </div>
       </section>
-
-      <details class="history-card">
-        <summary>Poslední aktivita</summary>
-        <div class="history-list" id="history-list"></div>
-      </details>
     </main>
-
-    <script>window.APP_CONFIG = { staleAfterMinutes: {{ stale_after_minutes }} };</script>
+    <script>window.APP_CONFIG = { alertAfterMinutes: {{ alert_after_minutes }}, criticalAfterMinutes: {{ critical_after_minutes }} };</script>
     <script src="/static/app.js?v={{ asset_version }}" defer></script>
   </body>
 </html>

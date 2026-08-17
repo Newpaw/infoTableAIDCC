@@ -40,6 +40,8 @@ class Settings:
     app_base_path: str
     environments: tuple[EnvironmentConfig, ...]
     global_max_slots: int | None
+    alert_after_minutes: int
+    critical_after_minutes: int
     stale_after_minutes: int
     auto_release_stale: bool
     database_path: Path
@@ -64,6 +66,12 @@ def get_settings() -> Settings:
     if bool(username) != bool(password):
         raise RuntimeError("Set both APP_USERNAME and APP_PASSWORD, or leave both empty.")
 
+    alert_after_minutes = max(1, int(os.getenv("ALERT_AFTER_MINUTES", "60")))
+    critical_after_minutes = max(
+        alert_after_minutes + 1,
+        int(os.getenv("CRITICAL_AFTER_MINUTES", "120")),
+    )
+
     return Settings(
         app_username=username,
         app_password=password,
@@ -82,9 +90,13 @@ def get_settings() -> Settings:
                 max_slots=max(1, int(os.getenv("TEST_MAX_SLOTS", "5"))),
             ),
         ),
-        global_max_slots=(lambda value: value if value > 0 else None)(int(os.getenv("GLOBAL_MAX_SLOTS", "5"))),
+        global_max_slots=(lambda value: value if value > 0 else None)(
+            int(os.getenv("GLOBAL_MAX_SLOTS", "5"))
+        ),
+        alert_after_minutes=alert_after_minutes,
+        critical_after_minutes=critical_after_minutes,
         stale_after_minutes=max(1, int(os.getenv("STALE_AFTER_MINUTES", "480"))),
         auto_release_stale=_bool_env("AUTO_RELEASE_STALE", False),
-        database_path=Path(os.getenv("DATABASE_PATH", "data/tracker.db")),
+        database_path=Path(os.getenv("DATABASE_PATH", "/app/data/tracker.db")),
         history_limit=max(1, int(os.getenv("HISTORY_LIMIT", "30"))),
     )

@@ -4,14 +4,15 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "infotableaidcc"
-version = "0.1.0"
-description = "Genesys Cloud license occupancy tracker"
+version = "0.2.0"
+description = "Genesys Cloud license launcher and usage analytics"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "fastapi>=0.116.0,<1.0.0",
     "jinja2>=3.1.6,<4.0.0",
     "python-dotenv>=1.1.1,<2.0.0",
+    "tzdata>=2025.2",
     "uvicorn[standard]>=0.35.0,<1.0.0",
 ]
 

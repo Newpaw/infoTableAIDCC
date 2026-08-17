@@ -10,7 +10,9 @@ COPY pyproject.toml README.md /app/
 COPY app /app/app
 
 RUN pip install --no-cache-dir . \
-    && mkdir -p /app/data
+    && mkdir -p /app/data \
+    && python -m compileall -q /app/app \
+    && DATABASE_PATH=/tmp/build-smoke.db python -c "from app.main import app; print(app.title)"
 
 VOLUME ["/app/data"]
 

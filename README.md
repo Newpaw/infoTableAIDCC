@@ -1,78 +1,68 @@
-# Genesys Cloud License Occupancy Tracker
+# AIDCC Genesys rozcestník
 
-Internal FastAPI utility for coordinating access to a limited pool of shared Genesys Cloud licenses.
+Jednoduchá interní webová aplikace pro hlídání omezených Genesys Cloud licencí.
 
-## Features
+Uživatel zadá své jméno a klikne na **Produkci** nebo **Test**. Aplikace atomicky zapíše obsazenou licenci do SQLite a až potom vrátí URL pro přesměrování do příslušného Genesys prostředí.
 
-- Shared Basic Authentication using environment variables
-- Live dashboard showing occupied and free slots
-- Check-in with employee name and optional note
-- Check-out and force-release actions
-- SQLite persistence for active sessions and history
-- Stale-session highlighting with optional automatic release
-- Docker and Docker Compose support
+- Produkce: `https://login.mypurecloud.de`
+- Test: `https://login.mypurecloud.ie`
+- výchozí bezpečnostní limit: 5 licencí celkem přes obě prostředí
+- zároveň lze nastavit samostatný limit pro PROD a TEST
+- odhlášení je ruční
+- zapomenuté přihlášení zůstává viditelné, dokud ho někdo neuvolní
+- přehled se automaticky obnovuje každých 10 sekund
 
-## Quick Start
+## Docker
 
-1. Create a `.env` file from `.env.example`.
-   Example: `cp .env.example .env`
-2. Start the app with Docker Compose:
+Image se při pushi do `main` nebo `master` automaticky publikuje do:
 
-```bash
-docker compose up --build
+```text
+ghcr.io/newpaw/infotableaidcc:latest
 ```
 
-3. Open `http://localhost:8000/infotable/` when `APP_BASE_PATH=/infotable`, or `http://localhost:8000/` when the variable is empty.
-
-## Run With Docker Only
-
-Build the image:
+### Docker Compose
 
 ```bash
-docker build -t genesys-license-tracker .
+cp .env.example .env
+docker compose pull
+docker compose up -d
 ```
 
-Create a persistent volume for SQLite data:
+Aplikace pak běží na `http://localhost:8000`.
 
-```bash
-docker volume create genesys-license-tracker-data
+## Konfigurace
+
+```env
+APP_USERNAME=
+APP_PASSWORD=
+APP_BASE_PATH=
+
+GLOBAL_MAX_SLOTS=5
+PROD_URL=https://login.mypurecloud.de
+PROD_MAX_SLOTS=5
+TEST_URL=https://login.mypurecloud.ie
+TEST_MAX_SLOTS=5
+
+AUTO_RELEASE_STALE=false
+STALE_AFTER_MINUTES=480
+DATABASE_PATH=data/tracker.db
+HISTORY_LIMIT=30
 ```
 
-Run the container with your `.env` file:
+`APP_USERNAME` a `APP_PASSWORD` jsou volitelné. Pokud je aplikace chráněná například přes Cloudflare Access, mohou zůstat prázdné. Pokud použiješ Basic Auth, musí být vyplněné oba údaje.
 
-```bash
-docker run --rm \
-  --name genesys-license-tracker \
-  -p 8000:8000 \
-  --env-file .env \
-  -v genesys-license-tracker-data:/app/data \
-  genesys-license-tracker
-```
+`GLOBAL_MAX_SLOTS=5` je celková pojistka přes PROD i TEST. Pokud máte ve skutečnosti 5 licencí v každém prostředí zvlášť, nastav `GLOBAL_MAX_SLOTS=0`.
 
-Then open `http://localhost:8000/infotable/` when `APP_BASE_PATH=/infotable`, or `http://localhost:8000/` when the variable is empty.
-
-## Local Development
-
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -e .
-uvicorn app.main:app --reload --env-file .env
-```
-
-If the app is hosted behind a shared URL path, set `APP_BASE_PATH` to that prefix, for example `/infotable`.
-
-## Environment Variables
-
-- `APP_USERNAME`
-- `APP_PASSWORD`
-- `APP_BASE_PATH` default empty string, example `/infotable`
-- `MAX_SLOTS` default `5`
-- `STALE_AFTER_MINUTES` default `480`
-- `AUTO_RELEASE_STALE` default `false`
-- `DATABASE_PATH` default `data/tracker.db`
-- `HISTORY_LIMIT` default `20`
+`AUTO_RELEASE_STALE` nech standardně `false`. Tím se záznam nikdy sám neuvolní jen proto, že je starý.
 
 ## Persistence
 
-The SQLite database is stored under `/app/data/tracker.db` in the container and mounted through a Docker volume in `docker-compose.yml`.
+SQLite databáze je v `/app/data/tracker.db`. `docker-compose.yml` používá persistentní volume `tracker-data`, takže stav přežije restart i výměnu image.
+
+## API
+
+- `GET /api/status` – aktuální obsazenost obou prostředí
+- `POST /api/enter` – rezervace licence před přesměrováním
+- `POST /api/check-out` – ruční uvolnění licence
+- `GET /api/history` – poslední aktivita
+- `GET /health` – healthcheck

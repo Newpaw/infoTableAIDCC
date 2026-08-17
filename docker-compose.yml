@@ -1,6 +1,6 @@
 services:
-  genesys-license-tracker:
-    build: .
+  aidcc-genesys-launcher:
+    image: ghcr.io/newpaw/infotableaidcc:latest
     ports:
       - "8000:8000"
     env_file:

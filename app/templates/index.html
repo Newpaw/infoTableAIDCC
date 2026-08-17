@@ -1,80 +1,67 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="cs">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light" />
     <title>{{ page_title }}</title>
     <link rel="stylesheet" href="{{ url_for('static', path='styles.css') }}" />
   </head>
   <body>
     <main class="shell">
-      <section class="hero">
-        <div class="hero-copy">
-          <p class="eyebrow">Internal occupancy board</p>
-          <h1>Genesys Cloud license tracker</h1>
-          <p class="hero-text">
-            Check the board before opening Genesys Cloud. One quick check-in keeps the team under the shared license cap.
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">AIDCC · Genesys Cloud</p>
+          <h1>Kam se chceš přihlásit?</h1>
+          <p class="lead">
+            Zadej jméno a pokračuj přes jeden z boxů. Kliknutím se automaticky zapíše obsazená licence a otevře se správné Genesys prostředí.
           </p>
         </div>
-        <div class="hero-panel" id="summary-card" data-state="available">
-          <p class="summary-label">Current usage</p>
-          <div class="summary-ratio">
-            <span id="occupied-slots">0</span>
-            <span class="summary-divider">/</span>
-            <span id="max-slots">{{ max_slots }}</span>
-          </div>
-          <p class="summary-message" id="summary-message">Loading current occupancy...</p>
-          <div class="summary-meta">
-            <span id="free-slots">0 free</span>
-            <span>Stale after {{ stale_after_minutes }} min</span>
-          </div>
+        <div class="top-status">
+          <div class="live-indicator"><span></span> živý přehled</div>
+          <div class="global-capacity" id="global-capacity">Celkem: načítám…</div>
         </div>
+      </header>
+
+      <section class="identity-card" aria-labelledby="name-label">
+        <label id="name-label" for="user-name">Tvoje jméno</label>
+        <input
+          id="user-name"
+          type="text"
+          maxlength="60"
+          autocomplete="name"
+          placeholder="Např. Jan Novopacký"
+          autofocus
+        />
+        <p class="hint">Jméno si prohlížeč zapamatuje pro příště.</p>
       </section>
 
-      <section class="dashboard-grid">
-        <article class="card form-card">
-          <div class="card-header">
-            <h2>Reserve a slot</h2>
-            <p>Use this right before logging into Genesys Cloud.</p>
-          </div>
-          <form id="check-in-form" class="check-form">
-            <label>
-              <span>Name</span>
-              <input id="user-name" name="user_name" type="text" maxlength="60" required />
-            </label>
-            <label>
-              <span>Note</span>
-              <textarea id="user-note" name="note" maxlength="180" rows="3" placeholder="Optional: testing, supervisor task, admin work"></textarea>
-            </label>
-            <button class="primary-button" type="submit">I'm logging into Genesys Cloud</button>
-          </form>
-          <p class="inline-status" id="form-status" aria-live="polite"></p>
-        </article>
-
-        <article class="card">
-          <div class="card-header">
-            <h2>Live board</h2>
-            <p>Auto-refreshes every 15 seconds.</p>
-          </div>
-          <div class="sessions" id="active-sessions"></div>
+      <section class="environment-grid" id="environment-grid" aria-live="polite">
+        <article class="environment-card loading-card">
+          <p>Načítám aktuální obsazenost…</p>
         </article>
       </section>
 
-      <section class="card history-card">
-        <div class="card-header">
-          <h2>Recent activity</h2>
-          <p>Latest check-ins and releases for quick auditing.</p>
+      <p class="global-status" id="global-status" role="status" aria-live="polite"></p>
+
+      <section class="rules-card">
+        <div>
+          <h2>Jednoduché pravidlo</h2>
+          <p>Do Genesysu vždy vstupuj přes tento rozcestník. Po skončení se sem vrať a dej <strong>Odhlásit</strong>.</p>
         </div>
+        <p class="rules-note">Staré záznamy se samy nemažou — dokud je někdo ručně neukončí, zůstávají obsazené.</p>
+      </section>
+
+      <details class="history-card">
+        <summary>Poslední aktivita</summary>
         <div class="history-list" id="history-list"></div>
-      </section>
+      </details>
     </main>
 
     <script>
       window.APP_CONFIG = {
         appBasePath: {{ app_base_path|tojson }},
-        maxSlots: {{ max_slots }},
         staleAfterMinutes: {{ stale_after_minutes }},
-        autoReleaseStale: {{ auto_release_stale|tojson }},
       };
     </script>
     <script src="{{ url_for('static', path='app.js') }}" defer></script>

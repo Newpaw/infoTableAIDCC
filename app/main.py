@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from base64 import b64decode
 from hmac import compare_digest
+from typing import Literal
 
 from fastapi import FastAPI, HTTPException, Query, Request, status
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -27,44 +28,37 @@ def route_path(base_path: str, path: str) -> str:
     return f"{base_path}{path}"
 
 
-class CheckInPayload(BaseModel):
+class EnterPayload(BaseModel):
     user_name: str = Field(min_length=2, max_length=60)
-    note: str = Field(default="", max_length=180)
+    environment: Literal["prod", "test"]
 
     @model_validator(mode="after")
-    def normalize(self) -> "CheckInPayload":
+    def normalize(self) -> "EnterPayload":
         self.user_name = " ".join(self.user_name.split())
-        self.note = " ".join(self.note.split())
         if len(self.user_name) < 2:
             raise ValueError("Name must contain at least 2 non-space characters.")
         return self
 
 
 class CheckOutPayload(BaseModel):
-    session_id: int | None = Field(default=None, ge=1)
-    user_name: str | None = Field(default=None, min_length=2, max_length=60)
-
-    @model_validator(mode="after")
-    def validate_target(self) -> "CheckOutPayload":
-        if self.user_name is not None:
-            self.user_name = " ".join(self.user_name.split())
-        if not self.session_id and not self.user_name:
-            raise ValueError("Provide session_id or user_name.")
-        return self
+    session_id: int = Field(ge=1)
 
 
 class BasicAuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         settings = get_settings()
-        if not self._is_authorized(request, settings):
-            return JSONResponse(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                headers={"WWW-Authenticate": "Basic"},
-                content={"detail": "Authentication required."},
-            )
-        return await call_next(request)
+        if request.url.path == "/health":
+            return await call_next(request)
+        if not settings.auth_enabled or self._is_authorized(request, settings):
+            return await call_next(request)
+        return JSONResponse(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            headers={"WWW-Authenticate": "Basic"},
+            content={"detail": "Authentication required."},
+        )
 
-    def _is_authorized(self, request: Request, settings: Settings) -> bool:
+    @staticmethod
+    def _is_authorized(request: Request, settings: Settings) -> bool:
         header = request.headers.get("Authorization", "")
         if not header.startswith("Basic "):
             return False
@@ -87,13 +81,17 @@ def create_app() -> FastAPI:
     base_path = settings.app_base_path
 
     app = FastAPI(
-        title="Genesys Cloud License Tracker",
-        summary="Manual occupancy board for shared Genesys Cloud licenses.",
+        title="AIDCC Genesys rozcestník",
+        summary="Shared license launcher for Genesys Cloud production and test environments.",
     )
     app.state.settings = settings
     app.state.store = store
     app.add_middleware(BasicAuthMiddleware)
-    app.mount(route_path(base_path, "/static"), StaticFiles(directory="app/static"), name="static")
+    app.mount(
+        route_path(base_path, "/static"),
+        StaticFiles(directory="app/static"),
+        name="static",
+    )
 
     @app.get(route_path(base_path, "/"), response_class=HTMLResponse)
     async def index(request: Request) -> HTMLResponse:
@@ -101,32 +99,54 @@ def create_app() -> FastAPI:
             request=request,
             name="index.html",
             context={
-                "page_title": "Genesys Cloud License Tracker",
+                "page_title": "AIDCC Genesys rozcestník",
                 "app_base_path": base_path,
-                "max_slots": settings.max_slots,
                 "stale_after_minutes": settings.stale_after_minutes,
-                "auto_release_stale": settings.auto_release_stale,
             },
         )
+
+    @app.get("/health")
+    async def health() -> dict:
+        return {"status": "ok"}
 
     @app.get(route_path(base_path, "/api/status"))
     async def get_status(request: Request) -> dict:
         maybe_auto_release(request)
         settings, store = get_runtime(request)
-        sessions = store.list_active_sessions()
-        occupied = len(sessions)
-        free_slots = max(0, settings.max_slots - occupied)
-        status_level = occupancy_level(occupied, settings.max_slots)
+        environments = []
+
+        for environment in settings.environments:
+            sessions = store.list_active_sessions(environment.key)
+            occupied = len(sessions)
+            free_slots = max(0, environment.max_slots - occupied)
+            environments.append(
+                {
+                    "key": environment.key,
+                    "label": environment.label,
+                    "url": environment.url,
+                    "max_slots": environment.max_slots,
+                    "occupied_slots": occupied,
+                    "free_slots": free_slots,
+                    "is_full": occupied >= environment.max_slots,
+                    "status_level": occupancy_level(occupied, environment.max_slots),
+                    "sessions": sessions,
+                }
+            )
+
+        all_sessions = store.list_active_sessions()
+        global_occupied = len(all_sessions)
+        global_limit = settings.global_max_slots
+        global_free = None if global_limit is None else max(0, global_limit - global_occupied)
+
         return {
             "generated_at": utc_now().replace(microsecond=0).isoformat(),
-            "occupied_slots": occupied,
-            "free_slots": free_slots,
-            "max_slots": settings.max_slots,
-            "is_full": occupied >= settings.max_slots,
-            "status_level": status_level,
+            "global_max_slots": global_limit,
+            "global_occupied_slots": global_occupied,
+            "global_free_slots": global_free,
+            "global_is_full": global_limit is not None and global_occupied >= global_limit,
             "stale_after_minutes": settings.stale_after_minutes,
             "auto_release_stale": settings.auto_release_stale,
-            "sessions": sessions,
+            "environments": environments,
         }
 
     @app.get(route_path(base_path, "/api/history"))
@@ -136,60 +156,51 @@ def create_app() -> FastAPI:
     ) -> dict:
         maybe_auto_release(request)
         _, store = get_runtime(request)
-        return {
-            "items": store.list_recent_history(limit),
-        }
+        return {"items": store.list_recent_history(limit)}
 
-    @app.post(route_path(base_path, "/api/check-in"), status_code=status.HTTP_201_CREATED)
-    async def check_in(request: Request, payload: CheckInPayload) -> dict:
+    @app.post(route_path(base_path, "/api/enter"))
+    async def enter_environment(request: Request, payload: EnterPayload) -> dict:
         maybe_auto_release(request)
-        _, store = get_runtime(request)
-        result, session = store.reserve_session(payload.user_name, payload.note)
-        if result == "duplicate":
+        settings, store = get_runtime(request)
+        environment = settings.environment(payload.environment)
+        result, session = store.reserve_session(
+            payload.user_name,
+            payload.environment,
+        )
+
+        if result == "global_full":
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail="This user already has an active session.",
+                detail="Je obsazený celkový limit licencí. Nikdo další se teď nesmí přihlásit.",
             )
+
         if result == "full":
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail="No free Genesys Cloud slots are currently available.",
+                detail=f"{environment.label} je plná. Nikdo další se teď nesmí přihlásit.",
             )
-        return {"message": "Slot occupied.", "session": session}
+
+        return {
+            "message": (
+                "Přihlášení už je evidované."
+                if result == "duplicate"
+                else "Licence byla rezervována."
+            ),
+            "already_active": result == "duplicate",
+            "session": session,
+            "redirect_url": environment.url,
+        }
 
     @app.post(route_path(base_path, "/api/check-out"))
     async def check_out(request: Request, payload: CheckOutPayload) -> dict:
-        settings, store = get_runtime(request)
-        released = store.release_session(
-            session_id=payload.session_id,
-            user_name=payload.user_name,
-            reason="manual",
-        )
+        _, store = get_runtime(request)
+        released = store.release_session(payload.session_id, reason="manual")
         if released is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="No matching active session found.",
+                detail="Aktivní přihlášení už nebylo nalezeno.",
             )
-        return {
-            "message": "Slot released.",
-            "released_session": released,
-            "max_slots": settings.max_slots,
-        }
-
-    @app.post(route_path(base_path, "/api/force-release/{session_id}"))
-    async def force_release(request: Request, session_id: int) -> dict:
-        settings, store = get_runtime(request)
-        released = store.release_session(session_id=session_id, reason="force")
-        if released is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="No matching active session found.",
-            )
-        return {
-            "message": "Session force-released.",
-            "released_session": released,
-            "max_slots": settings.max_slots,
-        }
+        return {"message": "Přihlášení bylo ukončeno.", "released_session": released}
 
     return app
 
